@@ -483,7 +483,7 @@ export default function App() {
       nextSelectedSlotIds.length > MONTHLY_MAX_HOURS
     ) {
       return setFormError(
-        `월 누적 시간은 ${MONTHLY_MIN_HOURS}시간 이상 ${MONTHLY_MAX_HOURS}시간 이하로 맞춰야 합니다.`
+        `한 달 ${MONTHLY_MIN_HOURS}시간 이상 ${MONTHLY_MAX_HOURS}시간 이하로 신청해 주세요.`
       );
     }
 
@@ -1015,7 +1015,7 @@ export default function App() {
                   <b>현재 선택 시간:</b> {selectedSlotIds.length}시간
                 </div>
                 <div>
-                  <b>허용 기준:</b> {MONTHLY_MIN_HOURS}시간 이상{" "}
+                  <b>선택 가능한 시간 기:</b> {MONTHLY_MIN_HOURS}시간 이상{" "}
                   {MONTHLY_MAX_HOURS}시간 이하
                 </div>
                 <div style={{ marginTop: 8, fontWeight: 700 }}>
@@ -1197,7 +1197,7 @@ export default function App() {
                               fontWeight: 700,
                             }}
                           >
-                            월 누적 {booking.totalHours}시간
+                            이번 달 신청 기 {booking.totalHours}시간
                           </span>
                           <span
                             style={{
