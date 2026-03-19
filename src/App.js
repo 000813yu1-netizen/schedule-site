@@ -1137,11 +1137,7 @@ color: "#ffffff"
                   minHeight: 180,
                 }}
               >
-               <>
-  {settings.adminNoticeTemplate}
-  {"\n\n"}
-  연락처: {settings.adminContact}
-</>
+              {settings.adminNoticeTemplate}
               </div>
             </div>
 
