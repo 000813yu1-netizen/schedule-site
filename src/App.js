@@ -1246,7 +1246,7 @@ export default function App() {
                 fontWeight: 700,
               }}
             >
-              이번 달 신청 시간 {booking.totalHours}시간
+              이번 달 신청 시간 {booking.totalHours}
             </span>
             <span
               style={{
