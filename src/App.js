@@ -585,7 +585,7 @@ export default function App() {
       );
 
       setNoticeText(nextNotice);
-      await saveSettings({ ...settings, lastNoticeText: nextNotice });
+      await saveSettings({ lastNoticeText: nextNotice });
 
       resetForm();
       setTab("notice");
@@ -672,7 +672,7 @@ export default function App() {
       );
 
       setNoticeText(nextNotice);
-      await saveSettings({ ...settings, lastNoticeText: nextNotice });
+      await saveSettings({ lastNoticeText: nextNotice });
 
       if (editingId === bookingId) resetForm();
       setTab("notice");
@@ -754,7 +754,7 @@ export default function App() {
   }
 
   async function clearLastNotice() {
-    await saveSettings({ ...settings, lastNoticeText: "" });
+    await saveSettings({ lastNoticeText: "" });
     setNoticeText("");
   }
 
