@@ -655,8 +655,8 @@ async function clearLastNotice() {
   style={{
     ...cardStyle(),
     gridColumn: "1 / -1",
-    background: "#005BAC",
-    color: "#ffffff"
+    background: "#0B5ED7",
+color: "#ffffff"
   }}
 >
             <div
@@ -1137,7 +1137,11 @@ async function clearLastNotice() {
                   minHeight: 180,
                 }}
               >
-                {`${settings.adminNoticeTemplate} 연락처: ${settings.adminContact}`}
+               <>
+  {settings.adminNoticeTemplate}
+  {"\n\n"}
+  연락처: {settings.adminContact}
+</>
               </div>
             </div>
 
