@@ -651,7 +651,7 @@ async function clearLastNotice() {
         <div
           style={{ display: "grid", gap: 20, gridTemplateColumns: "1.4fr 1fr" }}
         >
-          <div style={cardStyle()}>
+          <div style={{ ...cardStyle(), gridColumn: "1 / -1" }}>
             <div
               style={{
                 display: "flex",
