@@ -729,7 +729,7 @@ async function clearLastNotice() {
           {[
             ["live", "실시간 현황"],
             ["manage", "신청 / 변경"],
-            ["notice", "관리자 안내"],
+            ["notice", "담당자 안내"],
             ["admin", "운영 설정"],
           ].map(([key, label]) => (
             <button
