@@ -1122,7 +1122,7 @@ async function clearLastNotice() {
             }}
           >
             <div style={cardStyle()}>
-              <h2 style={{ fontSize: 32, marginTop: 0 }}>관리자 안내 문구</h2>
+              <h2 style={{ fontSize: 32, marginTop: 0 }}>담당자 안내</h2>
               <div
                style={{
   background: "#0f172a",
