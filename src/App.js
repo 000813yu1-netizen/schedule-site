@@ -309,6 +309,52 @@ function CalendarGrid({ slots }) {
     </div>
   );
 }
+function mergeContinuousTimeRanges(daySlots) {
+  if (!Array.isArray(daySlots) || daySlots.length === 0) return [];
+
+  const sorted = [...daySlots].sort((a, b) => a.start.localeCompare(b.start));
+  const merged = [];
+
+  for (const slot of sorted) {
+    if (merged.length === 0) {
+      merged.push({ start: slot.start, end: slot.end });
+      continue;
+    }
+
+    const last = merged[merged.length - 1];
+
+    if (last.end === slot.start) {
+      last.end = slot.end;
+    } else {
+      merged.push({ start: slot.start, end: slot.end });
+    }
+  }
+
+  return merged;
+}
+
+function buildBookingDateCards(slotIds, slots) {
+  const slotList = (slotIds || [])
+    .map((id) => slots.find((item) => item.id === id))
+    .filter(Boolean)
+    .sort(
+      (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start)
+    );
+
+  const grouped = {};
+
+  slotList.forEach((slot) => {
+    if (!grouped[slot.date]) grouped[slot.date] = [];
+    grouped[slot.date].push(slot);
+  });
+
+  return Object.keys(grouped)
+    .sort()
+    .map((date) => ({
+      date,
+      ranges: mergeContinuousTimeRanges(grouped[date]),
+    }));
+}
 
 export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -1139,223 +1185,166 @@ export default function App() {
             <div style={{ ...cardStyle(), gridColumn: "1 / -1" }}>
               <h2 style={{ fontSize: 32, marginTop: 0 }}>신청자 목록</h2>
               <div style={{ display: "grid", gap: 14 }}>
-                {bookingSummaries.map((booking) => (
+                {bookingSummaries.map((booking) => {
+  const bookingDateCards = buildBookingDateCards(booking.slotIds, slots);
+
+  return (
+    <div
+      key={booking.id}
+      style={{
+        ...cardStyle({
+          padding: 20,
+          boxShadow: "none",
+          border: "1px solid #e2e8f0",
+        }),
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>
+            {booking.name}
+          </div>
+          <div
+            style={{
+              fontSize: 18,
+              color: "#64748b",
+              marginTop: 6,
+            }}
+          >
+            연락처: {booking.phone || "-"}
+          </div>
+          <div
+            style={{
+              fontSize: 18,
+              color: "#64748b",
+              marginTop: 6,
+            }}
+          >
+            최근 수정: {booking.updatedAt}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              marginTop: 10,
+            }}
+          >
+            <span
+              style={{
+                background: "#e2e8f0",
+                borderRadius: 999,
+                padding: "8px 14px",
+                fontSize: 17,
+                fontWeight: 700,
+              }}
+            >
+              이번 달 신청 시간 {booking.totalHours}시간
+            </span>
+            <span
+              style={{
+                background: "#f1f5f9",
+                borderRadius: 999,
+                padding: "8px 14px",
+                fontSize: 17,
+                fontWeight: 700,
+              }}
+            >
+              상태: {booking.status}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            style={buttonStyle(false)}
+            onClick={() => startEdit(booking.id)}
+          >
+            변경
+          </button>
+          <button
+            style={buttonStyle(false)}
+            onClick={() => cancelBooking(booking.id)}
+          >
+            취소
+          </button>
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 16,
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: 12,
+        }}
+      >
+        {bookingDateCards.length > 0 ? (
+          bookingDateCards.map((item) => (
+            <div
+              key={item.date}
+              style={{
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 18,
+                padding: 16,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 800,
+                  marginBottom: 10,
+                }}
+              >
+                {formatDate(item.date)}
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {item.ranges.map((range, index) => (
                   <div
-                    key={booking.id}
+                    key={`${item.date}-${index}`}
                     style={{
-                      ...cardStyle({
-                        padding: 20,
-                        boxShadow: "none",
-                        border: "1px solid #e2e8f0",
-                      }),
+                      background: "#ffffff",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: 12,
+                      padding: "8px 10px",
+                      fontSize: 17,
+                      fontWeight: 700,
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {booking.name}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 18,
-                            color: "#64748b",
-                            marginTop: 6,
-                          }}
-                        >
-                          연락처: {booking.phone || "-"}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 18,
-                            color: "#64748b",
-                            marginTop: 6,
-                          }}
-                        >
-                          최근 수정: {booking.updatedAt}
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            flexWrap: "wrap",
-                            marginTop: 10,
-                          }}
-                        >
-                          <span
-                            style={{
-                              background: "#e2e8f0",
-                              borderRadius: 999,
-                              padding: "8px 14px",
-                              fontSize: 17,
-                              fontWeight: 700,
-                            }}
-                          >
-                            이번 달 신청 기 {booking.totalHours}시간
-                          </span>
-                          <span
-                            style={{
-                              background: "#f1f5f9",
-                              borderRadius: 999,
-                              padding: "8px 14px",
-                              fontSize: 17,
-                              fontWeight: 700,
-                            }}
-                          >
-                            상태: {booking.status}
-                          </span>
-                        </div>
-                      </div>
-                      <div
-                        style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
-                      >
-                        <button
-                          style={buttonStyle(false)}
-                          onClick={() => startEdit(booking.id)}
-                        >
-                          변경
-                        </button>
-                        <button
-                          style={buttonStyle(false)}
-                          onClick={() => cancelBooking(booking.id)}
-                        >
-                          취소
-                        </button>
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        marginTop: 14,
-                      }}
-                    >
-                      {booking.slotIds?.map((id) => {
-                        const slot = slots.find((item) => item.id === id);
-                        if (!slot) return null;
-                        return (
-                          <span
-                            key={id}
-                            style={{
-                              border: "1px solid #cbd5e1",
-                              borderRadius: 999,
-                              padding: "8px 14px",
-                              fontSize: 17,
-                            }}
-                          >
-                            {formatDate(slot.date)} {slot.start}~{slot.end}
-                          </span>
-                        );
-                      })}
-                    </div>
+                    {range.start} ~ {range.end}
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        )}
-
-        {tab === "notice" && (
+          ))
+        ) : (
           <div
             style={{
-              display: "grid",
-              gap: 20,
-              gridTemplateColumns: "1fr 1fr",
-              marginTop: 20,
+              gridColumn: "1 / -1",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: 16,
+              padding: 16,
+              fontSize: 17,
+              color: "#64748b",
             }}
           >
-            <div style={cardStyle()}>
-              <h2 style={{ fontSize: 32, marginTop: 0 }}>담당자 안내</h2>
-              <div
-                style={{
-                  background: "#0f172a",
-                  color: "#ffffff",
-                  borderRadius: 20,
-                  padding: 20,
-                  fontSize: 22,
-                  lineHeight: 1.7,
-                  minHeight: 180,
-                  whiteSpace: "pre-line",
-                }}
-              >
-                {settings.adminNoticeTemplate}
-              </div>
-            </div>
-
-            <div style={cardStyle()}>
-              <h2 style={{ fontSize: 32, marginTop: 0 }}>월 시간 확인표</h2>
-              <div style={{ display: "grid", gap: 14 }}>
-                {bookingSummaries.map((person) => {
-                  const percent = Math.min(
-                    (person.totalHours / MONTHLY_MAX_HOURS) * 100,
-                    100
-                  );
-                  return (
-                    <div
-                      key={person.id}
-                      style={{
-                        ...cardStyle({
-                          padding: 20,
-                          boxShadow: "none",
-                          border: "1px solid #e2e8f0",
-                        }),
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                        }}
-                      >
-                        <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {person.name}
-                        </div>
-                        <div style={{ fontSize: 20, fontWeight: 700 }}>
-                          {person.totalHours}시간
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          height: 14,
-                          background: "#e2e8f0",
-                          borderRadius: 999,
-                          overflow: "hidden",
-                          marginTop: 14,
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${percent}%`,
-                            height: "100%",
-                            background: "#0f172a",
-                          }}
-                        />
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 18,
-                          color: "#64748b",
-                          marginTop: 10,
-                        }}
-                      >
-                        상태: {person.status} · 기준 {MONTHLY_MIN_HOURS}시간 ~{" "}
-                        {MONTHLY_MAX_HOURS}시간
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            신청한 시간이 없습니다.
           </div>
         )}
+      </div>
+    </div>
+  );
+})}
 
         {tab === "admin" && (
           <div style={{ marginTop: 20 }}>
