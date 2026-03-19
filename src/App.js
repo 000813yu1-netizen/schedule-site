@@ -73,6 +73,7 @@ const DEFAULT_SETTINGS = {
   adminNoticeTemplate:
     "변경 또는 취소를 원할 경우, 담당자에게 우선 연락해 주세요.",
   ownerPassword: "",
+  lastNoticeText: "",
 };
 
 function buildSlotsFromAdminSelection(date, timeKey) {
@@ -480,17 +481,31 @@ export default function App() {
       updatedAt: nowStamp(),
     };
 
-    if (editingId) {
-      await updateDoc(doc(db, "bookings", editingId), payload);
-      setNoticeText(
-        buildNotice("[변경 공지]", trimmedName, trimmedPhone, selectedSlotIds)
-      );
-    } else {
-      await addDoc(collection(db, "bookings"), payload);
-      setNoticeText(
-        buildNotice("[등록 공지]", trimmedName, trimmedPhone, selectedSlotIds)
-      );
-    }
+if (editingId) {
+  await updateDoc(doc(db, "bookings", editingId), payload);
+
+  const nextNotice = buildNotice(
+    "[변경 공지]",
+    trimmedName,
+    trimmedPhone,
+    selectedSlotIds
+  );
+
+  setNoticeText(nextNotice);
+  await saveSettings({ ...settings, lastNoticeText: nextNotice });
+} else {
+  await addDoc(collection(db, "bookings"), payload);
+
+  const nextNotice = buildNotice(
+    "[등록 공지]",
+    trimmedName,
+    trimmedPhone,
+    selectedSlotIds
+  );
+
+  setNoticeText(nextNotice);
+  await saveSettings({ ...settings, lastNoticeText: nextNotice });
+}
 
     resetForm();
     setTab("notice");
@@ -517,14 +532,15 @@ export default function App() {
     const booking = bookings.find((item) => item.id === bookingId);
     if (!booking) return;
     await deleteDoc(doc(db, "bookings", bookingId));
-    setNoticeText(
-      buildNotice(
-        "[취소 공지]",
-        booking.name,
-        booking.phone || "연락처 없음",
-        booking.slotIds || []
-      )
-    );
+    const nextNotice = buildNotice(
+  "[취소 공지]",
+  booking.name,
+  booking.phone || "연락처 없음",
+  booking.slotIds || []
+);
+
+setNoticeText(nextNotice);
+await saveSettings({ ...settings, lastNoticeText: nextNotice });
     if (editingId === bookingId) resetForm();
     setTab("notice");
   }
@@ -589,7 +605,11 @@ export default function App() {
       setLinkCopied(false);
     }
   }
-
+async function clearLastNotice() {
+  await saveSettings({ ...settings, lastNoticeText: "" });
+  setNoticeText("");
+}
+  
   async function handleSeed() {
     setSeeding(true);
     try {
@@ -1110,8 +1130,7 @@ export default function App() {
                   minHeight: 180,
                 }}
               >
-                {noticeText ||
-                  `${settings.adminNoticeTemplate} 연락처: ${settings.adminContact}`}
+                {`${settings.adminNoticeTemplate} 연락처: ${settings.adminContact}`}
               </div>
             </div>
 
@@ -1465,7 +1484,26 @@ export default function App() {
                     >
                       운영 설정 저장
                     </button>
-
+                        <div
+  style={{
+    background: "#0f172a",
+    color: "#ffffff",
+    borderRadius: 20,
+    padding: 20,
+    fontSize: 20,
+    lineHeight: 1.7,
+    minHeight: 160,
+    whiteSpace: "pre-line",
+  }}
+>
+  {settings.lastNoticeText || "자동 공지가 아직 없습니다."}
+</div>
+<div style={{ marginTop: 12 }}>
+  <button style={buttonStyle(false)} onClick={clearLastNotice}>
+    자동 공지 초기화
+  </button>
+</div>
+  
                     <div
                       style={{
                         background: "#f8fafc",
