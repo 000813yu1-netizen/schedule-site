@@ -648,15 +648,12 @@ async function clearLastNotice() {
       }}
     >
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <div
-          style={{ display: "grid", gap: 20, gridTemplateColumns: "1.4fr 1fr" }}
+        <div style={{ display: "grid", gap: 20, gridTemplateColumns: "1.4fr 1fr" }}
         >
-         <div
-  style={{
-    ...cardStyle(),
+         <div style={{
+ ...cardStyle(),
     gridColumn: "1 / -1",
-    background: "#0B5ED7",
-color: "#ffffff"
+   border: "3px solid #0f172a"
   }}
 >
             <div
@@ -1127,15 +1124,16 @@ color: "#ffffff"
             <div style={cardStyle()}>
               <h2 style={{ fontSize: 32, marginTop: 0 }}>관리자 안내 문구</h2>
               <div
-                style={{
-                  background: "#0f172a",
-                  color: "#ffffff",
-                  borderRadius: 20,
-                  padding: 20,
-                  fontSize: 22,
-                  lineHeight: 1.7,
-                  minHeight: 180,
-                }}
+               style={{
+  background: "#0f172a",
+  color: "#ffffff",
+  borderRadius: 20,
+  padding: 20,
+  fontSize: 22,
+  lineHeight: 1.7,
+  minHeight: 180,
+  whiteSpace: "pre-line",
+}}
               >
               {settings.adminNoticeTemplate}
               </div>
