@@ -782,7 +782,6 @@ export default function App() {
             style={{
               display: "grid",
               gap: 20,
-              gridTemplateColumns: "0.9fr 1.1fr",
               marginTop: 20,
             }}
           >
