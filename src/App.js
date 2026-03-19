@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { initializeApp } from "firebase/app";
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -9,6 +8,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
 } from "firebase/firestore";
@@ -141,7 +141,11 @@ function buttonStyle(primary = false) {
 async function seedInitialData() {
   await setDoc(doc(db, "settings", "app"), DEFAULT_SETTINGS, { merge: true });
   for (const slot of DEFAULT_SLOTS) {
-    await setDoc(doc(db, "slots", slot.id), slot, { merge: true });
+    await setDoc(
+      doc(db, "slots", slot.id),
+      { ...slot, reservedCount: 0 },
+      { merge: true }
+    );
   }
 }
 
@@ -367,16 +371,35 @@ export default function App() {
     };
   }, []);
 
+  function normalizeSlotIds(slotIds) {
+    if (!Array.isArray(slotIds)) return [];
+    return [...new Set(slotIds.filter((id) => typeof id === "string" && id.trim()))];
+  }
+
+  function getSafeReservedCount(slotData, fallback = 0) {
+    const count = slotData?.reservedCount;
+    if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
+      return count;
+    }
+    return fallback;
+  }
+
   const slotStats = useMemo(() => {
     return [...slots]
       .map((slot) => {
         const members = bookings.filter((booking) =>
           booking.slotIds?.includes(slot.id)
         );
+
+        const reservedCount =
+          typeof slot.reservedCount === "number" && slot.reservedCount >= 0
+            ? slot.reservedCount
+            : members.length;
+
         return {
           ...slot,
-          bookedCount: members.length,
-          remaining: SLOT_CAPACITY - members.length,
+          bookedCount: reservedCount,
+          remaining: Math.max(0, SLOT_CAPACITY - reservedCount),
           memberNames: members.map((member) => member.name),
         };
       })
@@ -447,68 +470,140 @@ export default function App() {
   async function saveBooking() {
     const trimmedName = userName.trim();
     const trimmedPhone = userPhone.trim();
+    const nextSelectedSlotIds = normalizeSlotIds(selectedSlotIds);
+
     setFormError("");
 
     if (!trimmedName) return setFormError("이름을 입력해 주세요.");
     if (!trimmedPhone) return setFormError("연락처를 입력해 주세요.");
-    if (selectedSlotIds.length === 0)
+    if (nextSelectedSlotIds.length === 0)
       return setFormError("시간을 1개 이상 선택해 주세요.");
     if (
-      selectedSlotIds.length < MONTHLY_MIN_HOURS ||
-      selectedSlotIds.length > MONTHLY_MAX_HOURS
+      nextSelectedSlotIds.length < MONTHLY_MIN_HOURS ||
+      nextSelectedSlotIds.length > MONTHLY_MAX_HOURS
     ) {
       return setFormError(
         `월 누적 시간은 ${MONTHLY_MIN_HOURS}시간 이상 ${MONTHLY_MAX_HOURS}시간 이하로 맞춰야 합니다.`
       );
     }
 
-    const hasFullSlot = selectedSlotIds.some((slotId) => {
-      const stat = slotStats.find((slot) => slot.id === slotId);
-      const currentBooking = bookings.find(
-        (booking) => booking.id === editingId
+    try {
+      await runTransaction(db, async (transaction) => {
+        const bookingRef = editingId
+          ? doc(db, "bookings", editingId)
+          : doc(collection(db, "bookings"));
+
+        let prevSlotIds = [];
+
+        if (editingId) {
+          const bookingSnap = await transaction.get(bookingRef);
+          if (!bookingSnap.exists()) {
+            throw new Error("BOOKING_NOT_FOUND");
+          }
+          const bookingData = bookingSnap.data() || {};
+          prevSlotIds = normalizeSlotIds(bookingData.slotIds);
+        }
+
+        const prevSet = new Set(prevSlotIds);
+        const nextSet = new Set(nextSelectedSlotIds);
+
+        const addedSlotIds = nextSelectedSlotIds.filter((id) => !prevSet.has(id));
+        const removedSlotIds = prevSlotIds.filter((id) => !nextSet.has(id));
+        const touchedSlotIds = [...new Set([...addedSlotIds, ...removedSlotIds])];
+
+        const slotRefs = touchedSlotIds.map((slotId) => doc(db, "slots", slotId));
+        const slotSnaps = await Promise.all(
+          slotRefs.map((slotRef) => transaction.get(slotRef))
+        );
+
+        const slotMap = new Map();
+        touchedSlotIds.forEach((slotId, index) => {
+          slotMap.set(slotId, slotSnaps[index]);
+        });
+
+        for (const slotId of addedSlotIds) {
+          const slotSnap = slotMap.get(slotId);
+          if (!slotSnap || !slotSnap.exists()) {
+            throw new Error("SLOT_NOT_FOUND");
+          }
+
+          const slotData = slotSnap.data() || {};
+          const currentReserved = getSafeReservedCount(slotData, 0);
+
+          if (currentReserved >= SLOT_CAPACITY) {
+            throw new Error("SLOT_FULL");
+          }
+        }
+
+        for (const slotId of addedSlotIds) {
+          const slotRef = doc(db, "slots", slotId);
+          const slotSnap = slotMap.get(slotId);
+          const slotData = slotSnap?.data() || {};
+          const currentReserved = getSafeReservedCount(slotData, 0);
+
+          transaction.set(
+            slotRef,
+            { reservedCount: currentReserved + 1 },
+            { merge: true }
+          );
+        }
+
+        for (const slotId of removedSlotIds) {
+          const slotRef = doc(db, "slots", slotId);
+          const slotSnap = slotMap.get(slotId);
+
+          if (!slotSnap || !slotSnap.exists()) {
+            continue;
+          }
+
+          const slotData = slotSnap.data() || {};
+          const currentReserved = getSafeReservedCount(slotData, 0);
+          const nextReserved = Math.max(0, currentReserved - 1);
+
+          transaction.set(
+            slotRef,
+            { reservedCount: nextReserved },
+            { merge: true }
+          );
+        }
+
+        const payload = {
+          name: trimmedName,
+          phone: trimmedPhone,
+          slotIds: nextSelectedSlotIds,
+          updatedAt: nowStamp(),
+        };
+
+        transaction.set(bookingRef, payload, { merge: true });
+      });
+
+      const nextNotice = buildNotice(
+        editingId ? "[변경 공지]" : "[등록 공지]",
+        trimmedName,
+        trimmedPhone,
+        nextSelectedSlotIds
       );
-      const alreadySelectedBefore = currentBooking?.slotIds?.includes(slotId);
-      if (alreadySelectedBefore) return false;
-      return stat && stat.bookedCount >= SLOT_CAPACITY;
-    });
-    if (hasFullSlot)
-      return setFormError("정원이 찬 시간이 포함되어 있어 저장할 수 없습니다.");
 
-    const payload = {
-      name: trimmedName,
-      phone: trimmedPhone,
-      slotIds: selectedSlotIds,
-      updatedAt: nowStamp(),
-    };
+      setNoticeText(nextNotice);
+      await saveSettings({ ...settings, lastNoticeText: nextNotice });
 
-if (editingId) {
-  await updateDoc(doc(db, "bookings", editingId), payload);
-
-  const nextNotice = buildNotice(
-    "[변경 공지]",
-    trimmedName,
-    trimmedPhone,
-    selectedSlotIds
-  );
-
-  setNoticeText(nextNotice);
-  await saveSettings({ ...settings, lastNoticeText: nextNotice });
-} else {
-  await addDoc(collection(db, "bookings"), payload);
-
-  const nextNotice = buildNotice(
-    "[등록 공지]",
-    trimmedName,
-    trimmedPhone,
-    selectedSlotIds
-  );
-
-  setNoticeText(nextNotice);
-  await saveSettings({ ...settings, lastNoticeText: nextNotice });
-}
-
-    resetForm();
-    setTab("notice");
+      resetForm();
+      setTab("notice");
+    } catch (error) {
+      if (error?.message === "SLOT_FULL") {
+        setFormError("정원이 찬 시간이 포함되어 있어 저장할 수 없습니다.");
+        return;
+      }
+      if (error?.message === "SLOT_NOT_FOUND") {
+        setFormError("선택한 시간 중 사용할 수 없는 시간이 있습니다. 다시 선택해 주세요.");
+        return;
+      }
+      if (error?.message === "BOOKING_NOT_FOUND") {
+        setFormError("수정할 신청 정보를 찾을 수 없습니다. 새로고침 후 다시 시도해 주세요.");
+        return;
+      }
+      setFormError("저장 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+    }
   }
 
   function startEdit(bookingId) {
@@ -517,7 +612,7 @@ if (editingId) {
     setEditingId(booking.id);
     setUserName(booking.name || "");
     setUserPhone(booking.phone || "");
-    setSelectedSlotIds(booking.slotIds || []);
+    setSelectedSlotIds(normalizeSlotIds(booking.slotIds));
     setFormError("");
     setTab("manage");
     setTimeout(() => {
@@ -531,18 +626,59 @@ if (editingId) {
   async function cancelBooking(bookingId) {
     const booking = bookings.find((item) => item.id === bookingId);
     if (!booking) return;
-    await deleteDoc(doc(db, "bookings", bookingId));
-    const nextNotice = buildNotice(
-  "[취소 공지]",
-  booking.name,
-  booking.phone || "연락처 없음",
-  booking.slotIds || []
-);
 
-setNoticeText(nextNotice);
-await saveSettings({ ...settings, lastNoticeText: nextNotice });
-    if (editingId === bookingId) resetForm();
-    setTab("notice");
+    try {
+      await runTransaction(db, async (transaction) => {
+        const bookingRef = doc(db, "bookings", bookingId);
+        const bookingSnap = await transaction.get(bookingRef);
+
+        if (!bookingSnap.exists()) {
+          throw new Error("BOOKING_NOT_FOUND");
+        }
+
+        const bookingData = bookingSnap.data() || {};
+        const slotIds = normalizeSlotIds(bookingData.slotIds);
+
+        const slotRefs = slotIds.map((slotId) => doc(db, "slots", slotId));
+        const slotSnaps = await Promise.all(
+          slotRefs.map((slotRef) => transaction.get(slotRef))
+        );
+
+        slotIds.forEach((slotId, index) => {
+          const slotSnap = slotSnaps[index];
+          if (!slotSnap || !slotSnap.exists()) {
+            return;
+          }
+
+          const slotData = slotSnap.data() || {};
+          const currentReserved = getSafeReservedCount(slotData, 0);
+          const nextReserved = Math.max(0, currentReserved - 1);
+
+          transaction.set(
+            doc(db, "slots", slotId),
+            { reservedCount: nextReserved },
+            { merge: true }
+          );
+        });
+
+        transaction.delete(bookingRef);
+      });
+
+      const nextNotice = buildNotice(
+        "[취소 공지]",
+        booking.name,
+        booking.phone || "연락처 없음",
+        booking.slotIds || []
+      );
+
+      setNoticeText(nextNotice);
+      await saveSettings({ ...settings, lastNoticeText: nextNotice });
+
+      if (editingId === bookingId) resetForm();
+      setTab("notice");
+    } catch (error) {
+      setFormError("취소 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+    }
   }
 
   async function addSlot() {
@@ -551,11 +687,22 @@ await saveSettings({ ...settings, lastNoticeText: nextNotice });
     if (slotDocs.length === 0) return;
 
     for (const slot of slotDocs) {
-      await setDoc(
-        doc(db, "slots", slot.id),
-        { date: slot.date, start: slot.start, end: slot.end },
-        { merge: true }
-      );
+      const existingSlot = slots.find((item) => item.id === slot.id);
+      const payload = {
+        date: slot.date,
+        start: slot.start,
+        end: slot.end,
+      };
+
+      if (
+        !existingSlot ||
+        typeof existingSlot.reservedCount !== "number" ||
+        existingSlot.reservedCount < 0
+      ) {
+        payload.reservedCount = 0;
+      }
+
+      await setDoc(doc(db, "slots", slot.id), payload, { merge: true });
     }
 
     setNoticeText(
@@ -605,11 +752,12 @@ await saveSettings({ ...settings, lastNoticeText: nextNotice });
       setLinkCopied(false);
     }
   }
-async function clearLastNotice() {
-  await saveSettings({ ...settings, lastNoticeText: "" });
-  setNoticeText("");
-}
-  
+
+  async function clearLastNotice() {
+    await saveSettings({ ...settings, lastNoticeText: "" });
+    setNoticeText("");
+  }
+
   async function handleSeed() {
     setSeeding(true);
     try {
@@ -648,14 +796,16 @@ async function clearLastNotice() {
       }}
     >
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <div style={{ display: "grid", gap: 20, gridTemplateColumns: "1.4fr 1fr" }}
+        <div
+          style={{ display: "grid", gap: 20, gridTemplateColumns: "1.4fr 1fr" }}
         >
-         <div style={{
- ...cardStyle(),
-    gridColumn: "1 / -1",
-   border: "3px solid #0f172a"
-  }}
->
+          <div
+            style={{
+              ...cardStyle(),
+              gridColumn: "1 / -1",
+              border: "3px solid #0f172a",
+            }}
+          >
             <div
               style={{
                 display: "flex",
@@ -1124,18 +1274,18 @@ async function clearLastNotice() {
             <div style={cardStyle()}>
               <h2 style={{ fontSize: 32, marginTop: 0 }}>담당자 안내</h2>
               <div
-               style={{
-  background: "#0f172a",
-  color: "#ffffff",
-  borderRadius: 20,
-  padding: 20,
-  fontSize: 22,
-  lineHeight: 1.7,
-  minHeight: 180,
-  whiteSpace: "pre-line",
-}}
+                style={{
+                  background: "#0f172a",
+                  color: "#ffffff",
+                  borderRadius: 20,
+                  padding: 20,
+                  fontSize: 22,
+                  lineHeight: 1.7,
+                  minHeight: 180,
+                  whiteSpace: "pre-line",
+                }}
               >
-              {settings.adminNoticeTemplate}
+                {settings.adminNoticeTemplate}
               </div>
             </div>
 
@@ -1489,26 +1639,26 @@ async function clearLastNotice() {
                     >
                       운영 설정 저장
                     </button>
-                        <div
-  style={{
-    background: "#0f172a",
-    color: "#ffffff",
-    borderRadius: 20,
-    padding: 20,
-    fontSize: 20,
-    lineHeight: 1.7,
-    minHeight: 160,
-    whiteSpace: "pre-line",
-  }}
->
-  {settings.lastNoticeText || "자동 공지가 아직 없습니다."}
-</div>
-<div style={{ marginTop: 12 }}>
-  <button style={buttonStyle(false)} onClick={clearLastNotice}>
-    자동 공지 초기화
-  </button>
-</div>
-  
+                    <div
+                      style={{
+                        background: "#0f172a",
+                        color: "#ffffff",
+                        borderRadius: 20,
+                        padding: 20,
+                        fontSize: 20,
+                        lineHeight: 1.7,
+                        minHeight: 160,
+                        whiteSpace: "pre-line",
+                      }}
+                    >
+                      {settings.lastNoticeText || "자동 공지가 아직 없습니다."}
+                    </div>
+                    <div style={{ marginTop: 12 }}>
+                      <button style={buttonStyle(false)} onClick={clearLastNotice}>
+                        자동 공지 초기화
+                      </button>
+                    </div>
+
                     <div
                       style={{
                         background: "#f8fafc",
