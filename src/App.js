@@ -1437,27 +1437,20 @@ export default function App() {
                     {adminError}
                   </div>
                 )}
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    marginTop: 16,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <button style={buttonStyle(true)} onClick={handleAdminAccess}>
-                    {!settings.ownerPassword
-                      ? "관리자 비밀번호 저장"
-                      : "운영 설정 열기"}
-                  </button>
-                  <button
-                    style={buttonStyle(false)}
-                    onClick={handleSeed}
-                    disabled={seeding}
-                  >
-                    {seeding ? "초기화 중" : "초기 시간 세팅"}
-                  </button>
-                </div>
+               <div
+  style={{
+    display: "flex",
+    gap: 10,
+    marginTop: 16,
+    flexWrap: "wrap",
+  }}
+>
+  <button style={buttonStyle(true)} onClick={handleAdminAccess}>
+    {!settings.ownerPassword
+      ? "관리자 비밀번호 저장"
+      : "운영 설정 열기"}
+  </button>
+</div>
               </div>
             ) : (
               <div
