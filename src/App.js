@@ -483,7 +483,7 @@ export default function App() {
       nextSelectedSlotIds.length > MONTHLY_MAX_HOURS
     ) {
       return setFormError(
-        `월 누적 시간은 ${MONTHLY_MIN_HOURS}시간 이상 ${MONTHLY_MAX_HOURS}시간 이하로 맞춰야 합니다.`
+        `한 달에 ${MONTHLY_MIN_HOURS}시간 이상 ${MONTHLY_MAX_HOURS}시간 이하로 맞춰야 합니다.`
       );
     }
 
@@ -585,7 +585,7 @@ export default function App() {
       );
 
       setNoticeText(nextNotice);
-      await saveSettings({ ...settings, lastNoticeText: nextNotice });
+      await saveSettings({ lastNoticeText: nextNotice });
 
       resetForm();
       setTab("notice");
@@ -672,8 +672,7 @@ export default function App() {
       );
 
       setNoticeText(nextNotice);
-      await saveSettings({ ...settings, lastNoticeText: nextNotice });
-
+      await saveSettings({ lastNoticeText: nextNotice });
       if (editingId === bookingId) resetForm();
       setTab("notice");
     } catch (error) {
@@ -754,7 +753,7 @@ export default function App() {
   }
 
   async function clearLastNotice() {
-    await saveSettings({ ...settings, lastNoticeText: "" });
+   await saveSettings({ lastNoticeText: "" });
     setNoticeText("");
   }
 
@@ -1015,7 +1014,7 @@ export default function App() {
                   <b>현재 선택 시간:</b> {selectedSlotIds.length}시간
                 </div>
                 <div>
-                  <b>허용 기준:</b> {MONTHLY_MIN_HOURS}시간 이상{" "}
+                  <b>신청 기준:</b> {MONTHLY_MIN_HOURS}시간 이상{" "}
                   {MONTHLY_MAX_HOURS}시간 이하
                 </div>
                 <div style={{ marginTop: 8, fontWeight: 700 }}>
@@ -1290,7 +1289,7 @@ export default function App() {
             </div>
 
             <div style={cardStyle()}>
-              <h2 style={{ fontSize: 32, marginTop: 0 }}>월 시간 확인표</h2>
+              <h2 style={{ fontSize: 32, marginTop: 0 }}>월 신청 시간</h2>
               <div style={{ display: "grid", gap: 14 }}>
                 {bookingSummaries.map((person) => {
                   const percent = Math.min(
