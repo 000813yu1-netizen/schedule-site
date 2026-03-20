@@ -53,17 +53,6 @@ const ALL_DAY_SLOTS = [
   ["17:00", "18:00"],
 ];
 
-const DEFAULT_SLOTS = [
-  { id: "2026-03-18-09:00", date: "2026-03-18", start: "09:00", end: "10:00" },
-  { id: "2026-03-18-10:00", date: "2026-03-18", start: "10:00", end: "11:00" },
-  { id: "2026-03-18-11:00", date: "2026-03-18", start: "11:00", end: "12:00" },
-  { id: "2026-03-18-13:00", date: "2026-03-18", start: "13:00", end: "14:00" },
-  { id: "2026-03-18-14:00", date: "2026-03-18", start: "14:00", end: "15:00" },
-  { id: "2026-03-18-15:00", date: "2026-03-18", start: "15:00", end: "16:00" },
-  { id: "2026-03-18-16:00", date: "2026-03-18", start: "16:00", end: "17:00" },
-  { id: "2026-03-18-17:00", date: "2026-03-18", start: "17:00", end: "18:00" },
-];
-
 const DEFAULT_SETTINGS = {
   title: "동행상담사 일정",
   description:
@@ -136,17 +125,6 @@ function buttonStyle(primary = false) {
     fontWeight: 700,
     cursor: "pointer",
   };
-}
-
-async function seedInitialData() {
-  await setDoc(doc(db, "settings", "app"), DEFAULT_SETTINGS, { merge: true });
-  for (const slot of DEFAULT_SLOTS) {
-    await setDoc(
-      doc(db, "slots", slot.id),
-      { ...slot, reservedCount: 0 },
-      { merge: true }
-    );
-  }
 }
 
 function CalendarGrid({ slots }) {
@@ -324,12 +302,13 @@ export default function App() {
   const [newDate, setNewDate] = useState("");
   const [newTimeKey, setNewTimeKey] = useState("09:00-10:00");
   const [loading, setLoading] = useState(true);
-  const [seeding, setSeeding] = useState(false);
   const [adminInputPassword, setAdminInputPassword] = useState("");
   const [newOwnerPassword, setNewOwnerPassword] = useState("");
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
   const [adminError, setAdminError] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
+  const [selectedDeleteBookingId, setSelectedDeleteBookingId] = useState("");
+  const [deleteBookingError, setDeleteBookingError] = useState("");
   const manageTopRef = useRef(null);
 
   useEffect(() => {
@@ -370,6 +349,15 @@ export default function App() {
       unsubBookings();
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      selectedDeleteBookingId &&
+      !bookings.some((item) => item.id === selectedDeleteBookingId)
+    ) {
+      setSelectedDeleteBookingId("");
+    }
+  }, [bookings, selectedDeleteBookingId]);
 
   function normalizeSlotIds(slotIds) {
     if (!Array.isArray(slotIds)) return [];
@@ -623,60 +611,92 @@ export default function App() {
     }, 80);
   }
 
-  async function cancelBooking(bookingId) {
+  async function deleteBookingWithCounts(bookingId) {
     const booking = bookings.find((item) => item.id === bookingId);
-    if (!booking) return;
+    if (!booking) {
+      throw new Error("BOOKING_NOT_FOUND");
+    }
 
-    try {
-      await runTransaction(db, async (transaction) => {
-        const bookingRef = doc(db, "bookings", bookingId);
-        const bookingSnap = await transaction.get(bookingRef);
+    await runTransaction(db, async (transaction) => {
+      const bookingRef = doc(db, "bookings", bookingId);
+      const bookingSnap = await transaction.get(bookingRef);
 
-        if (!bookingSnap.exists()) {
-          throw new Error("BOOKING_NOT_FOUND");
-        }
+      if (!bookingSnap.exists()) {
+        throw new Error("BOOKING_NOT_FOUND");
+      }
 
-        const bookingData = bookingSnap.data() || {};
-        const slotIds = normalizeSlotIds(bookingData.slotIds);
+      const bookingData = bookingSnap.data() || {};
+      const slotIds = normalizeSlotIds(bookingData.slotIds);
 
-        const slotRefs = slotIds.map((slotId) => doc(db, "slots", slotId));
-        const slotSnaps = await Promise.all(
-          slotRefs.map((slotRef) => transaction.get(slotRef))
-        );
-
-        slotIds.forEach((slotId, index) => {
-          const slotSnap = slotSnaps[index];
-          if (!slotSnap || !slotSnap.exists()) {
-            return;
-          }
-
-          const slotData = slotSnap.data() || {};
-          const currentReserved = getSafeReservedCount(slotData, 0);
-          const nextReserved = Math.max(0, currentReserved - 1);
-
-          transaction.set(
-            doc(db, "slots", slotId),
-            { reservedCount: nextReserved },
-            { merge: true }
-          );
-        });
-
-        transaction.delete(bookingRef);
-      });
-
-      const nextNotice = buildNotice(
-        "[취소 공지]",
-        booking.name,
-        booking.phone || "연락처 없음",
-        booking.slotIds || []
+      const slotRefs = slotIds.map((slotId) => doc(db, "slots", slotId));
+      const slotSnaps = await Promise.all(
+        slotRefs.map((slotRef) => transaction.get(slotRef))
       );
 
-      setNoticeText(nextNotice);
-      await saveSettings({ lastNoticeText: nextNotice });
+      slotIds.forEach((slotId, index) => {
+        const slotSnap = slotSnaps[index];
+        if (!slotSnap || !slotSnap.exists()) {
+          return;
+        }
+
+        const slotData = slotSnap.data() || {};
+        const currentReserved = getSafeReservedCount(slotData, 0);
+        const nextReserved = Math.max(0, currentReserved - 1);
+
+        transaction.set(
+          doc(db, "slots", slotId),
+          { reservedCount: nextReserved },
+          { merge: true }
+        );
+      });
+
+      transaction.delete(bookingRef);
+    });
+
+    const nextNotice = buildNotice(
+      "[취소 공지]",
+      booking.name,
+      booking.phone || "연락처 없음",
+      booking.slotIds || []
+    );
+
+    setNoticeText(nextNotice);
+    await saveSettings({ lastNoticeText: nextNotice });
+
+    return booking;
+  }
+
+  async function cancelBooking(bookingId) {
+    try {
+      await deleteBookingWithCounts(bookingId);
+
       if (editingId === bookingId) resetForm();
       setTab("notice");
     } catch (error) {
       setFormError("취소 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  }
+
+  async function handleAdminDeleteBooking() {
+    setDeleteBookingError("");
+
+    if (!selectedDeleteBookingId) {
+      setDeleteBookingError("삭제할 신청자를 먼저 선택해 주세요.");
+      return;
+    }
+
+    try {
+      await deleteBookingWithCounts(selectedDeleteBookingId);
+
+      if (editingId === selectedDeleteBookingId) resetForm();
+      setSelectedDeleteBookingId("");
+    } catch (error) {
+      if (error?.message === "BOOKING_NOT_FOUND") {
+        setDeleteBookingError("삭제할 신청 정보를 찾을 수 없습니다.");
+        setSelectedDeleteBookingId("");
+        return;
+      }
+      setDeleteBookingError("신청 내역 삭제 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     }
   }
 
@@ -753,18 +773,8 @@ export default function App() {
   }
 
   async function clearLastNotice() {
-   await saveSettings({ lastNoticeText: "" });
+    await saveSettings({ lastNoticeText: "" });
     setNoticeText("");
-  }
-
-  async function handleSeed() {
-    setSeeding(true);
-    try {
-      await seedInitialData();
-      setNoticeText("초기 시간대와 기본 설정이 Firebase에 저장되었습니다.");
-    } finally {
-      setSeeding(false);
-    }
   }
 
   async function handleAdminAccess() {
@@ -1449,13 +1459,6 @@ export default function App() {
                       ? "관리자 비밀번호 저장"
                       : "운영 설정 열기"}
                   </button>
-                  <button
-                    style={buttonStyle(false)}
-                    onClick={handleSeed}
-                    disabled={seeding}
-                  >
-                    {seeding ? "초기화 중" : "초기 시간 세팅"}
-                  </button>
                 </div>
               </div>
             ) : (
@@ -1632,6 +1635,90 @@ export default function App() {
                         링크 복사 {linkCopied ? "완료" : ""}
                       </button>
                     </div>
+
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        borderRadius: 20,
+                        padding: 18,
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 22,
+                          fontWeight: 800,
+                          marginBottom: 12,
+                        }}
+                      >
+                        신청 내역 삭제
+                      </div>
+
+                      <select
+                        value={selectedDeleteBookingId}
+                        onChange={(e) => {
+                          setSelectedDeleteBookingId(e.target.value);
+                          setDeleteBookingError("");
+                        }}
+                        style={{
+                          width: "100%",
+                          height: 56,
+                          fontSize: 20,
+                          borderRadius: 16,
+                          border: "1px solid #cbd5e1",
+                          padding: "0 16px",
+                          boxSizing: "border-box",
+                          background: "#ffffff",
+                        }}
+                      >
+                        <option value="">삭제할 신청자를 선택해 주세요</option>
+                        {bookingSummaries.map((booking) => (
+                          <option key={booking.id} value={booking.id}>
+                            {booking.name} · {booking.phone || "연락처 없음"} ·{" "}
+                            {booking.totalHours}시간
+                          </option>
+                        ))}
+                      </select>
+
+                      {deleteBookingError && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            background: "#fef2f2",
+                            color: "#b91c1c",
+                            border: "1px solid #fecaca",
+                            borderRadius: 18,
+                            padding: 14,
+                            fontSize: 17,
+                          }}
+                        >
+                          {deleteBookingError}
+                        </div>
+                      )}
+
+                      <div style={{ marginTop: 12 }}>
+                        <button
+                          style={buttonStyle(false)}
+                          onClick={handleAdminDeleteBooking}
+                          disabled={!selectedDeleteBookingId}
+                        >
+                          신청 내역 삭제
+                        </button>
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 17,
+                          color: "#64748b",
+                          marginTop: 10,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        선택한 신청자의 예약 전체가 삭제되며, 연결된 시간대 인원수도
+                        함께 줄어듭니다.
+                      </div>
+                    </div>
+
                     <button
                       style={buttonStyle(true)}
                       onClick={() => saveSettings(settings)}
