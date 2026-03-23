@@ -1077,11 +1077,6 @@ export default function App() {
               <h2 style={{ fontSize: 32, marginTop: 0 }}>
                 1시간 단위 시간 선택
               </h2>
-              <div style={{ fontSize: 18, color: "#64748b", marginBottom: 14 }}>
-                운영 설정에서 오후 5시~6시를 추가하면 그 1개 슬롯이 보이고, 전체
-                시간을 추가하면 같은 방식으로 해당 날짜의 8개 1시간 슬롯이
-                이곳에 생성됩니다.
-              </div>
               <div
                 style={{
                   display: "grid",
