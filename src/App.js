@@ -13,6 +13,7 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
+import { getDocs } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCSrQFDKxpW0_az4LNXg2gKHNwE77LrMME",
@@ -693,6 +694,12 @@ export default function App() {
     }
 
     try {
+      const allBookingsSnap = await getDocs(collection(db, "bookings"));
+      const preFetchedBookings = allBookingsSnap.docs.map((item) => ({
+        id: item.id,
+        ...item.data(),
+      }));
+
       await runTransaction(db, async (transaction) => {
         const bookingRef = editingId
           ? doc(db, "bookings", editingId)
@@ -705,14 +712,8 @@ export default function App() {
           }
         }
 
-       const allBookingsSnap = await transaction.get(
-  collection(db, "bookings")
-);
-
-        const virtualBookings = allBookingsSnap.docs.map((item) => ({
-          id: item.id,
-          ...item.data(),
-        }));
+       // 🔥 transaction 밖에서 미리 가져온 bookings 사용
+        const virtualBookings = preFetchedBookings;
 
         const nextPayload = {
           id: bookingRef.id,
