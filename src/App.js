@@ -80,7 +80,9 @@ const TIME_OPTIONS = [
   { label: "전체 시간", value: "ALL_DAY" },
 ];
 
-const ALLOWED_DOUBLE_SLOT_KEYS = new Set(["MORNING_1|AFTERNOON_2"]);
+const ALLOWED_DOUBLE_SLOT_KEYS = new Set([
+  ["MORNING_1", "AFTERNOON_2"].sort().join("|")
+]);
 const INVALID_COMBO_MESSAGE = `8시간 선택은 오전1 + 오후2만 가능합니다.\n(9시~13시 / 14시~18시)`;
 
 const DEFAULT_SETTINGS = {
