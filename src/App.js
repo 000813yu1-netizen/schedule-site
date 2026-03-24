@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { initializeApp } from "firebase/app";
 import {
@@ -29,29 +30,58 @@ const db = getFirestore(app);
 const MONTHLY_MIN_HOURS = 40;
 const MONTHLY_MAX_HOURS = 57;
 const SLOT_CAPACITY = 7;
+const HOURS_PER_SLOT = 4;
+
+const SLOT_DEFINITIONS = [
+  {
+    key: "MORNING_1",
+    label: "오전1",
+    displayTime: "9시~13시",
+    start: "09:00",
+    end: "13:00",
+    segments: ["09:00-10:00", "10:00-13:00"],
+  },
+  {
+    key: "MORNING_2",
+    label: "오전2",
+    displayTime: "10시~14시",
+    start: "10:00",
+    end: "14:00",
+    segments: ["10:00-13:00", "13:00-14:00"],
+  },
+  {
+    key: "AFTERNOON_1",
+    label: "오후1",
+    displayTime: "13시~17시",
+    start: "13:00",
+    end: "17:00",
+    segments: ["13:00-14:00", "14:00-17:00"],
+  },
+  {
+    key: "AFTERNOON_2",
+    label: "오후2",
+    displayTime: "14시~18시",
+    start: "14:00",
+    end: "18:00",
+    segments: ["14:00-17:00", "17:00-18:00"],
+  },
+];
+
+const SLOT_KEY_ORDER = SLOT_DEFINITIONS.map((slot) => slot.key);
+const SLOT_KEY_TO_DEF = Object.fromEntries(
+  SLOT_DEFINITIONS.map((slot) => [slot.key, slot])
+);
 
 const TIME_OPTIONS = [
-  { label: "오전 9시~10시", value: "09:00-10:00" },
-  { label: "오전 10시~11시", value: "10:00-11:00" },
-  { label: "오전 11시~12시", value: "11:00-12:00" },
-  { label: "오후 1시~2시", value: "13:00-14:00" },
-  { label: "오후 2시~3시", value: "14:00-15:00" },
-  { label: "오후 3시~4시", value: "15:00-16:00" },
-  { label: "오후 4시~5시", value: "16:00-17:00" },
-  { label: "오후 5시~6시", value: "17:00-18:00" },
-  { label: "전체 시간(오전 9시~오후 6시)", value: "ALL_DAY" },
+  ...SLOT_DEFINITIONS.map((slot) => ({
+    label: `${slot.label} (${slot.displayTime})`,
+    value: slot.key,
+  })),
+  { label: "전체 시간", value: "ALL_DAY" },
 ];
 
-const ALL_DAY_SLOTS = [
-  ["09:00", "10:00"],
-  ["10:00", "11:00"],
-  ["11:00", "12:00"],
-  ["13:00", "14:00"],
-  ["14:00", "15:00"],
-  ["15:00", "16:00"],
-  ["16:00", "17:00"],
-  ["17:00", "18:00"],
-];
+const ALLOWED_DOUBLE_SLOT_KEYS = new Set(["MORNING_1|AFTERNOON_2"]);
+const INVALID_COMBO_MESSAGE = `8시간 선택은 오전1 + 오후2만 가능합니다.\n(9시~13시 / 14시~18시)`;
 
 const DEFAULT_SETTINGS = {
   title: "동행상담사 일정",
@@ -65,20 +95,36 @@ const DEFAULT_SETTINGS = {
   lastNoticeText: "",
 };
 
+function getSlotDefinition(slotOrKey) {
+  if (!slotOrKey) return null;
+  if (typeof slotOrKey === "string") return SLOT_KEY_TO_DEF[slotOrKey] || null;
+  return SLOT_KEY_TO_DEF[slotOrKey.slotKey] || null;
+}
+
+function buildSlotDoc(date, slotKey) {
+  const definition = getSlotDefinition(slotKey);
+  if (!date || !definition) return null;
+
+  return {
+    id: `${date}-${definition.key}`,
+    date,
+    slotKey: definition.key,
+    label: definition.label,
+    displayTime: definition.displayTime,
+    start: definition.start,
+    end: definition.end,
+  };
+}
+
 function buildSlotsFromAdminSelection(date, timeKey) {
   if (!date || !timeKey) return [];
 
   if (timeKey === "ALL_DAY") {
-    return ALL_DAY_SLOTS.map(([start, end]) => ({
-      id: `${date}-${start}`,
-      date,
-      start,
-      end,
-    }));
+    return SLOT_DEFINITIONS.map((definition) => buildSlotDoc(date, definition.key));
   }
 
-  const [start, end] = timeKey.split("-");
-  return [{ id: `${date}-${start}`, date, start, end }];
+  const slotDoc = buildSlotDoc(date, timeKey);
+  return slotDoc ? [slotDoc] : [];
 }
 
 function formatDate(dateStr) {
@@ -90,8 +136,15 @@ function formatDate(dateStr) {
   }).format(date);
 }
 
+function slotSummaryText(slot) {
+  const label = slot?.label || getSlotDefinition(slot)?.label || "";
+  const displayTime =
+    slot?.displayTime || getSlotDefinition(slot)?.displayTime || "";
+  return `${label} (${displayTime})`;
+}
+
 function slotText(slot) {
-  return `${formatDate(slot.date)} ${slot.start}~${slot.end}`;
+  return `${formatDate(slot.date)} ${slotSummaryText(slot)}`;
 }
 
 function nowStamp() {
@@ -127,6 +180,89 @@ function buttonStyle(primary = false) {
   };
 }
 
+function normalizeSlotIds(slotIds) {
+  if (!Array.isArray(slotIds)) return [];
+  return [...new Set(slotIds.filter((id) => typeof id === "string" && id.trim()))];
+}
+
+function buildSlotsByIdMap(slots) {
+  return Object.fromEntries(
+    slots.map((slot) => [
+      slot.id,
+      {
+        ...slot,
+        ...(getSlotDefinition(slot) || {}),
+      },
+    ])
+  );
+}
+
+function buildOccupancyMap(bookings, slotsById) {
+  const occupancy = {};
+
+  bookings.forEach((booking) => {
+    normalizeSlotIds(booking.slotIds).forEach((slotId) => {
+      const slot = slotsById[slotId];
+      const definition = getSlotDefinition(slot);
+      if (!slot || !definition) return;
+
+      definition.segments.forEach((segment) => {
+        if (!occupancy[slot.date]) occupancy[slot.date] = {};
+        occupancy[slot.date][segment] = (occupancy[slot.date][segment] || 0) + 1;
+      });
+    });
+  });
+
+  return occupancy;
+}
+
+function getSlotRemaining(slot, occupancyMap) {
+  const definition = getSlotDefinition(slot);
+  if (!definition) return 0;
+  const segments = definition.segments || [];
+  const remainingCounts = segments.map((segment) => {
+    const occupied = occupancyMap?.[slot.date]?.[segment] || 0;
+    return SLOT_CAPACITY - occupied;
+  });
+  return Math.max(0, Math.min(...remainingCounts, SLOT_CAPACITY));
+}
+
+function getCapacityConflictDates(bookings, slotsById) {
+  const occupancy = buildOccupancyMap(bookings, slotsById);
+  const conflictDates = new Set();
+
+  Object.entries(occupancy).forEach(([date, segmentMap]) => {
+    const hasConflict = Object.values(segmentMap).some(
+      (count) => count > SLOT_CAPACITY
+    );
+    if (hasConflict) conflictDates.add(date);
+  });
+
+  return conflictDates;
+}
+
+function getSelectionKeysForDate(slotIds, slotsById, date) {
+  return normalizeSlotIds(slotIds)
+    .map((id) => slotsById[id])
+    .filter((slot) => slot && slot.date === date)
+    .sort(
+      (a, b) => SLOT_KEY_ORDER.indexOf(a.slotKey) - SLOT_KEY_ORDER.indexOf(b.slotKey)
+    )
+    .map((slot) => slot.slotKey);
+}
+
+function isValidDateSelection(slotKeys) {
+  if (slotKeys.length === 0) return true;
+  if (slotKeys.length === 1) return true;
+  if (slotKeys.length > 2) return false;
+  const joined = [...slotKeys].sort().join("|");
+  return ALLOWED_DOUBLE_SLOT_KEYS.has(joined);
+}
+
+function formatHoursLabel(hours) {
+  return `${hours}시간`;
+}
+
 function CalendarGrid({ slots }) {
   const grouped = slots.reduce((acc, slot) => {
     if (!acc[slot.date]) acc[slot.date] = [];
@@ -139,9 +275,11 @@ function CalendarGrid({ slots }) {
   return (
     <div style={{ display: "grid", gap: 18 }}>
       {orderedDates.map((date) => {
-        const daySlots = [...grouped[date]].sort((a, b) =>
-          a.start.localeCompare(b.start)
+        const daySlots = [...grouped[date]].sort(
+          (a, b) =>
+            SLOT_KEY_ORDER.indexOf(a.slotKey) - SLOT_KEY_ORDER.indexOf(b.slotKey)
         );
+
         return (
           <div
             key={date}
@@ -164,7 +302,7 @@ function CalendarGrid({ slots }) {
               }}
             >
               {daySlots.map((slot) => {
-                const isFull = slot.bookedCount >= SLOT_CAPACITY;
+                const isFull = slot.remaining <= 0;
                 const ratio = slot.bookedCount / SLOT_CAPACITY;
                 const bg = isFull
                   ? "#fee2e2"
@@ -186,15 +324,18 @@ function CalendarGrid({ slots }) {
                       background: bg,
                       borderRadius: 20,
                       padding: 16,
-                      minHeight: 150,
+                      minHeight: 176,
                       display: "flex",
                       flexDirection: "column",
                       justifyContent: "space-between",
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 21, fontWeight: 800 }}>
-                        {slot.start}~{slot.end}
+                      <div style={{ fontSize: 23, fontWeight: 800 }}>{slot.label}</div>
+                      <div
+                        style={{ fontSize: 18, color: "#475569", marginTop: 6 }}
+                      >
+                        {slot.displayTime}
                       </div>
                       <div
                         style={{ fontSize: 17, color: "#475569", marginTop: 6 }}
@@ -230,6 +371,15 @@ function CalendarGrid({ slots }) {
                             background: isFull ? "#ef4444" : "#0f172a",
                           }}
                         />
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 16,
+                          color: "#475569",
+                          marginTop: 8,
+                        }}
+                      >
+                        잔여 {slot.remaining}명
                       </div>
                     </div>
 
@@ -299,8 +449,9 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [noticeText, setNoticeText] = useState("");
   const [formError, setFormError] = useState("");
+  const [dateSelectionWarnings, setDateSelectionWarnings] = useState({});
   const [newDate, setNewDate] = useState("");
-  const [newTimeKey, setNewTimeKey] = useState("09:00-10:00");
+  const [newTimeKey, setNewTimeKey] = useState("MORNING_1");
   const [loading, setLoading] = useState(true);
   const [adminInputPassword, setAdminInputPassword] = useState("");
   const [newOwnerPassword, setNewOwnerPassword] = useState("");
@@ -323,10 +474,23 @@ export default function App() {
     const unsubSlots = onSnapshot(
       query(collection(db, "slots"), orderBy("date"), orderBy("start")),
       (snapshot) => {
-        const next = snapshot.docs.map((item) => ({
-          id: item.id,
-          ...item.data(),
-        }));
+        const next = snapshot.docs
+          .map((item) => {
+            const data = item.data();
+            const definition = getSlotDefinition(data.slotKey || item.id.split("-").pop());
+            return {
+              id: item.id,
+              ...data,
+              ...(definition || {}),
+              label: data.label || definition?.label || "",
+              displayTime: data.displayTime || definition?.displayTime || "",
+              start: data.start || definition?.start || "",
+              end: data.end || definition?.end || "",
+              slotKey: data.slotKey || definition?.key || "",
+            };
+          })
+          .filter((slot) => Boolean(slot.slotKey));
+
         setSlots(next);
         setLoading(false);
       }
@@ -359,47 +523,37 @@ export default function App() {
     }
   }, [bookings, selectedDeleteBookingId]);
 
-  function normalizeSlotIds(slotIds) {
-    if (!Array.isArray(slotIds)) return [];
-    return [...new Set(slotIds.filter((id) => typeof id === "string" && id.trim()))];
-  }
+  const slotsById = useMemo(() => buildSlotsByIdMap(slots), [slots]);
 
-  function getSafeReservedCount(slotData, fallback = 0) {
-    const count = slotData?.reservedCount;
-    if (typeof count === "number" && Number.isFinite(count) && count >= 0) {
-      return count;
-    }
-    return fallback;
-  }
+  const occupancyMap = useMemo(() => {
+    return buildOccupancyMap(bookings, slotsById);
+  }, [bookings, slotsById]);
 
   const slotStats = useMemo(() => {
     return [...slots]
       .map((slot) => {
         const members = bookings.filter((booking) =>
-          booking.slotIds?.includes(slot.id)
+          normalizeSlotIds(booking.slotIds).includes(slot.id)
         );
-
-        const reservedCount =
-          typeof slot.reservedCount === "number" && slot.reservedCount >= 0
-            ? slot.reservedCount
-            : members.length;
 
         return {
           ...slot,
-          bookedCount: reservedCount,
-          remaining: Math.max(0, SLOT_CAPACITY - reservedCount),
+          bookedCount: members.length,
+          remaining: getSlotRemaining(slot, occupancyMap),
           memberNames: members.map((member) => member.name),
         };
       })
-      .sort(
-        (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start)
-      );
-  }, [slots, bookings]);
+      .sort((a, b) => {
+        const dateDiff = a.date.localeCompare(b.date);
+        if (dateDiff !== 0) return dateDiff;
+        return SLOT_KEY_ORDER.indexOf(a.slotKey) - SLOT_KEY_ORDER.indexOf(b.slotKey);
+      });
+  }, [slots, bookings, occupancyMap]);
 
   const bookingSummaries = useMemo(() => {
     return bookings
       .map((booking) => {
-        const totalHours = booking.slotIds?.length || 0;
+        const totalHours = normalizeSlotIds(booking.slotIds).length * HOURS_PER_SLOT;
         let status = "적정";
         if (totalHours < MONTHLY_MIN_HOURS) status = "부족";
         if (totalHours > MONTHLY_MAX_HOURS) status = "초과";
@@ -414,7 +568,13 @@ export default function App() {
       if (!map[slot.date]) map[slot.date] = [];
       map[slot.date].push(slot);
     });
-    return Object.entries(map);
+
+    return Object.entries(map).map(([date, daySlots]) => [
+      date,
+      [...daySlots].sort(
+        (a, b) => SLOT_KEY_ORDER.indexOf(a.slotKey) - SLOT_KEY_ORDER.indexOf(b.slotKey)
+      ),
+    ]);
   }, [slotStats]);
 
   const hashtagItems = useMemo(() => {
@@ -430,26 +590,58 @@ export default function App() {
     setSelectedSlotIds([]);
     setEditingId(null);
     setFormError("");
+    setDateSelectionWarnings({});
+  }
+
+  function clearDateWarning(date) {
+    setDateSelectionWarnings((prev) => {
+      if (!prev[date]) return prev;
+      const next = { ...prev };
+      delete next[date];
+      return next;
+    });
   }
 
   function toggleSlot(slotId) {
     setFormError("");
+
     const slot = slotStats.find((item) => item.id === slotId);
+    if (!slot) return;
+
     const isSelected = selectedSlotIds.includes(slotId);
-    if (!isSelected && slot && slot.bookedCount >= SLOT_CAPACITY) return;
-    setSelectedSlotIds((prev) =>
-      prev.includes(slotId)
-        ? prev.filter((id) => id !== slotId)
-        : [...prev, slotId]
-    );
+
+    if (isSelected) {
+      const nextIds = selectedSlotIds.filter((id) => id !== slotId);
+      setSelectedSlotIds(nextIds);
+      clearDateWarning(slot.date);
+      return;
+    }
+
+    if (slot.remaining <= 0) return;
+
+    const candidateIds = [...selectedSlotIds, slotId];
+    const sameDateKeys = getSelectionKeysForDate(candidateIds, slotsById, slot.date);
+
+    if (!isValidDateSelection(sameDateKeys)) {
+      setDateSelectionWarnings((prev) => ({
+        ...prev,
+        [slot.date]: INVALID_COMBO_MESSAGE,
+      }));
+      return;
+    }
+
+    clearDateWarning(slot.date);
+    setSelectedSlotIds(candidateIds);
   }
 
   function buildNotice(prefix, personName, personPhone, slotIds) {
-    const slotInfo = slotIds
-      .map((id) => slots.find((slot) => slot.id === id))
+    const slotInfo = normalizeSlotIds(slotIds)
+      .map((id) => slotsById[id])
       .filter(Boolean)
+      .sort((a, b) => a.date.localeCompare(b.date) || SLOT_KEY_ORDER.indexOf(a.slotKey) - SLOT_KEY_ORDER.indexOf(b.slotKey))
       .map((slot) => slotText(slot))
       .join(", ");
+
     return `${prefix} ${personName}님(${personPhone}) 일정 처리 완료. 선택 시간: ${
       slotInfo || "없음"
     }. ${settings.adminNoticeTemplate} 연락처: ${settings.adminContact}`;
@@ -459,6 +651,7 @@ export default function App() {
     const trimmedName = userName.trim();
     const trimmedPhone = userPhone.trim();
     const nextSelectedSlotIds = normalizeSlotIds(selectedSlotIds);
+    const totalHours = nextSelectedSlotIds.length * HOURS_PER_SLOT;
 
     setFormError("");
 
@@ -466,10 +659,32 @@ export default function App() {
     if (!trimmedPhone) return setFormError("연락처를 입력해 주세요.");
     if (nextSelectedSlotIds.length === 0)
       return setFormError("시간을 1개 이상 선택해 주세요.");
-    if (
-      nextSelectedSlotIds.length < MONTHLY_MIN_HOURS ||
-      nextSelectedSlotIds.length > MONTHLY_MAX_HOURS
-    ) {
+
+    const selectedDateMap = {};
+    nextSelectedSlotIds.forEach((slotId) => {
+      const slot = slotsById[slotId];
+      if (!slot) return;
+      if (!selectedDateMap[slot.date]) selectedDateMap[slot.date] = [];
+      selectedDateMap[slot.date].push(slot.slotKey);
+    });
+
+    const invalidDate = Object.entries(selectedDateMap).find(([, slotKeys]) => {
+      const orderedKeys = [...slotKeys].sort(
+        (a, b) => SLOT_KEY_ORDER.indexOf(a) - SLOT_KEY_ORDER.indexOf(b)
+      );
+      return !isValidDateSelection(orderedKeys);
+    });
+
+    if (invalidDate) {
+      const [date] = invalidDate;
+      setDateSelectionWarnings((prev) => ({
+        ...prev,
+        [date]: INVALID_COMBO_MESSAGE,
+      }));
+      return setFormError("선택할 수 없는 8시간 조합이 포함되어 있습니다.");
+    }
+
+    if (totalHours < MONTHLY_MIN_HOURS || totalHours > MONTHLY_MAX_HOURS) {
       return setFormError(
         `한 달에 ${MONTHLY_MIN_HOURS}시간 이상 ${MONTHLY_MAX_HOURS}시간 이하로 맞춰야 합니다.`
       );
@@ -481,88 +696,70 @@ export default function App() {
           ? doc(db, "bookings", editingId)
           : doc(collection(db, "bookings"));
 
-        let prevSlotIds = [];
-
         if (editingId) {
           const bookingSnap = await transaction.get(bookingRef);
           if (!bookingSnap.exists()) {
             throw new Error("BOOKING_NOT_FOUND");
           }
-          const bookingData = bookingSnap.data() || {};
-          prevSlotIds = normalizeSlotIds(bookingData.slotIds);
         }
 
-        const prevSet = new Set(prevSlotIds);
-        const nextSet = new Set(nextSelectedSlotIds);
-
-        const addedSlotIds = nextSelectedSlotIds.filter((id) => !prevSet.has(id));
-        const removedSlotIds = prevSlotIds.filter((id) => !nextSet.has(id));
-        const touchedSlotIds = [...new Set([...addedSlotIds, ...removedSlotIds])];
-
-        const slotRefs = touchedSlotIds.map((slotId) => doc(db, "slots", slotId));
-        const slotSnaps = await Promise.all(
-          slotRefs.map((slotRef) => transaction.get(slotRef))
+        const allBookingsSnap = await transaction.get(
+          query(collection(db, "bookings"), orderBy("name"))
         );
 
-        const slotMap = new Map();
-        touchedSlotIds.forEach((slotId, index) => {
-          slotMap.set(slotId, slotSnaps[index]);
-        });
+        const virtualBookings = allBookingsSnap.docs.map((item) => ({
+          id: item.id,
+          ...item.data(),
+        }));
 
-        for (const slotId of addedSlotIds) {
-          const slotSnap = slotMap.get(slotId);
-          if (!slotSnap || !slotSnap.exists()) {
-            throw new Error("SLOT_NOT_FOUND");
-          }
-
-          const slotData = slotSnap.data() || {};
-          const currentReserved = getSafeReservedCount(slotData, 0);
-
-          if (currentReserved >= SLOT_CAPACITY) {
-            throw new Error("SLOT_FULL");
-          }
-        }
-
-        for (const slotId of addedSlotIds) {
-          const slotRef = doc(db, "slots", slotId);
-          const slotSnap = slotMap.get(slotId);
-          const slotData = slotSnap?.data() || {};
-          const currentReserved = getSafeReservedCount(slotData, 0);
-
-          transaction.set(
-            slotRef,
-            { reservedCount: currentReserved + 1 },
-            { merge: true }
-          );
-        }
-
-        for (const slotId of removedSlotIds) {
-          const slotRef = doc(db, "slots", slotId);
-          const slotSnap = slotMap.get(slotId);
-
-          if (!slotSnap || !slotSnap.exists()) {
-            continue;
-          }
-
-          const slotData = slotSnap.data() || {};
-          const currentReserved = getSafeReservedCount(slotData, 0);
-          const nextReserved = Math.max(0, currentReserved - 1);
-
-          transaction.set(
-            slotRef,
-            { reservedCount: nextReserved },
-            { merge: true }
-          );
-        }
-
-        const payload = {
+        const nextPayload = {
+          id: bookingRef.id,
           name: trimmedName,
           phone: trimmedPhone,
           slotIds: nextSelectedSlotIds,
           updatedAt: nowStamp(),
         };
 
-        transaction.set(bookingRef, payload, { merge: true });
+        const hasAllSlots = nextSelectedSlotIds.every((slotId) => Boolean(slotsById[slotId]));
+        if (!hasAllSlots) {
+          throw new Error("SLOT_NOT_FOUND");
+        }
+
+        const nextBookings = editingId
+          ? virtualBookings.map((booking) =>
+              booking.id === editingId ? nextPayload : booking
+            )
+          : [...virtualBookings, nextPayload];
+
+        const conflictDates = getCapacityConflictDates(nextBookings, slotsById);
+        if (conflictDates.size > 0) {
+          throw new Error("TIME_OVER_CAPACITY");
+        }
+
+        transaction.set(
+          bookingRef,
+          {
+            name: trimmedName,
+            phone: trimmedPhone,
+            slotIds: nextSelectedSlotIds,
+            slotSummaries: nextSelectedSlotIds
+              .map((slotId) => {
+                const slot = slotsById[slotId];
+                if (!slot) return null;
+                return {
+                  slotId,
+                  label: slot.label,
+                  displayTime: slot.displayTime,
+                  start: slot.start,
+                  end: slot.end,
+                  date: slot.date,
+                };
+              })
+              .filter(Boolean),
+            updatedAt: nowStamp(),
+          },
+          { merge: true }
+        );
       });
 
       const nextNotice = buildNotice(
@@ -578,8 +775,8 @@ export default function App() {
       resetForm();
       setTab("notice");
     } catch (error) {
-      if (error?.message === "SLOT_FULL") {
-        setFormError("정원이 찬 시간이 포함되어 있어 저장할 수 없습니다.");
+      if (error?.message === "TIME_OVER_CAPACITY") {
+        setFormError("겹치는 시간대 인원이 7명을 초과해 저장할 수 없습니다.");
         return;
       }
       if (error?.message === "SLOT_NOT_FOUND") {
@@ -602,6 +799,7 @@ export default function App() {
     setUserPhone(booking.phone || "");
     setSelectedSlotIds(normalizeSlotIds(booking.slotIds));
     setFormError("");
+    setDateSelectionWarnings({});
     setTab("manage");
     setTimeout(() => {
       manageTopRef.current?.scrollIntoView({
@@ -617,41 +815,7 @@ export default function App() {
       throw new Error("BOOKING_NOT_FOUND");
     }
 
-    await runTransaction(db, async (transaction) => {
-      const bookingRef = doc(db, "bookings", bookingId);
-      const bookingSnap = await transaction.get(bookingRef);
-
-      if (!bookingSnap.exists()) {
-        throw new Error("BOOKING_NOT_FOUND");
-      }
-
-      const bookingData = bookingSnap.data() || {};
-      const slotIds = normalizeSlotIds(bookingData.slotIds);
-
-      const slotRefs = slotIds.map((slotId) => doc(db, "slots", slotId));
-      const slotSnaps = await Promise.all(
-        slotRefs.map((slotRef) => transaction.get(slotRef))
-      );
-
-      slotIds.forEach((slotId, index) => {
-        const slotSnap = slotSnaps[index];
-        if (!slotSnap || !slotSnap.exists()) {
-          return;
-        }
-
-        const slotData = slotSnap.data() || {};
-        const currentReserved = getSafeReservedCount(slotData, 0);
-        const nextReserved = Math.max(0, currentReserved - 1);
-
-        transaction.set(
-          doc(db, "slots", slotId),
-          { reservedCount: nextReserved },
-          { merge: true }
-        );
-      });
-
-      transaction.delete(bookingRef);
-    });
+    await deleteDoc(doc(db, "bookings", bookingId));
 
     const nextNotice = buildNotice(
       "[취소 공지]",
@@ -706,50 +870,56 @@ export default function App() {
     if (slotDocs.length === 0) return;
 
     for (const slot of slotDocs) {
-      const existingSlot = slots.find((item) => item.id === slot.id);
-      const payload = {
-        date: slot.date,
-        start: slot.start,
-        end: slot.end,
-      };
-
-      if (
-        !existingSlot ||
-        typeof existingSlot.reservedCount !== "number" ||
-        existingSlot.reservedCount < 0
-      ) {
-        payload.reservedCount = 0;
-      }
-
-      await setDoc(doc(db, "slots", slot.id), payload, { merge: true });
+      await setDoc(
+        doc(db, "slots", slot.id),
+        {
+          date: slot.date,
+          slotKey: slot.slotKey,
+          label: slot.label,
+          displayTime: slot.displayTime,
+          start: slot.start,
+          end: slot.end,
+        },
+        { merge: true }
+      );
     }
 
     setNoticeText(
       newTimeKey === "ALL_DAY"
-        ? `${formatDate(
-            newDate
-          )} 날짜에 8개의 1시간 슬롯이 관리자 설정에서 자동 생성되었습니다.`
-        : `${formatDate(newDate)} ${slotDocs[0].start}~${
-            slotDocs[0].end
-          } 시간이 추가되었습니다.`
+        ? `${formatDate(newDate)} 날짜에 4개의 4시간 슬롯이 관리자 설정에서 자동 생성되었습니다.`
+        : `${formatDate(newDate)} ${slotDocs[0].label}(${slotDocs[0].displayTime}) 시간이 추가되었습니다.`
     );
 
     setNewDate("");
-    setNewTimeKey("09:00-10:00");
+    setNewTimeKey("MORNING_1");
   }
 
   async function deleteSlotById(slotId) {
     await deleteDoc(doc(db, "slots", slotId));
     const affected = bookings.filter((booking) =>
-      booking.slotIds?.includes(slotId)
+      normalizeSlotIds(booking.slotIds).includes(slotId)
     );
     for (const booking of affected) {
-      const nextIds = booking.slotIds.filter((id) => id !== slotId);
+      const nextIds = normalizeSlotIds(booking.slotIds).filter((id) => id !== slotId);
       if (nextIds.length === 0) {
         await deleteDoc(doc(db, "bookings", booking.id));
       } else {
         await updateDoc(doc(db, "bookings", booking.id), {
           slotIds: nextIds,
+          slotSummaries: nextIds
+            .map((id) => {
+              const slot = slotsById[id];
+              if (!slot) return null;
+              return {
+                slotId: id,
+                label: slot.label,
+                displayTime: slot.displayTime,
+                start: slot.start,
+                end: slot.end,
+                date: slot.date,
+              };
+            })
+            .filter(Boolean),
           updatedAt: nowStamp(),
         });
       }
@@ -793,6 +963,8 @@ export default function App() {
       return setAdminError("관리자 비밀번호가 올바르지 않습니다.");
     setIsAdminUnlocked(true);
   }
+
+  const selectedTotalHours = selectedSlotIds.length * HOURS_PER_SLOT;
 
   return (
     <div
@@ -942,11 +1114,17 @@ export default function App() {
                             padding: 14,
                             borderRadius: 16,
                             fontSize: 18,
+                            alignItems: "center",
                           }}
                         >
-                          <span>
-                            {slot.start}~{slot.end}
-                          </span>
+                          <div>
+                            <div style={{ fontSize: 20, fontWeight: 800 }}>
+                              {slot.label}
+                            </div>
+                            <div style={{ fontSize: 17, color: "#475569", marginTop: 4 }}>
+                              {slot.displayTime}
+                            </div>
+                          </div>
                           <b>
                             {slot.bookedCount}/{SLOT_CAPACITY}명
                           </b>
@@ -1021,21 +1199,17 @@ export default function App() {
                 }}
               >
                 <div>
-                  <b>현재 선택 시간:</b> {selectedSlotIds.length}시간
+                  <b>현재 선택 시간:</b> {formatHoursLabel(selectedTotalHours)}
                 </div>
                 <div>
                   <b>신청 기준:</b> {MONTHLY_MIN_HOURS}시간 이상{" "}
                   {MONTHLY_MAX_HOURS}시간 이하
                 </div>
                 <div style={{ marginTop: 8, fontWeight: 700 }}>
-                  {selectedSlotIds.length < MONTHLY_MIN_HOURS
-                    ? `${
-                        MONTHLY_MIN_HOURS - selectedSlotIds.length
-                      }시간 더 선택해야 합니다.`
-                    : selectedSlotIds.length > MONTHLY_MAX_HOURS
-                    ? `${
-                        selectedSlotIds.length - MONTHLY_MAX_HOURS
-                      }시간 초과되었습니다.`
+                  {selectedTotalHours < MONTHLY_MIN_HOURS
+                    ? `${MONTHLY_MIN_HOURS - selectedTotalHours}시간 더 선택해야 합니다.`
+                    : selectedTotalHours > MONTHLY_MAX_HOURS
+                    ? `${selectedTotalHours - MONTHLY_MAX_HOURS}시간 초과되었습니다.`
                     : "현재 시간은 허용 범위 안에 있습니다."}
                 </div>
               </div>
@@ -1075,68 +1249,107 @@ export default function App() {
 
             <div style={cardStyle()}>
               <h2 style={{ fontSize: 32, marginTop: 0 }}>
-                1시간 단위 시간 선택
+                4시간 단위 시간 선택
               </h2>
-              <div
-                style={{
-                  display: "grid",
-                  gap: 14,
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                }}
-              >
-                {slotStats.map((slot) => {
-                  const active = selectedSlotIds.includes(slot.id);
-                  const disabled = slot.bookedCount >= SLOT_CAPACITY && !active;
-                  return (
-                    <button
-                      key={slot.id}
-                      onClick={() => !disabled && toggleSlot(slot.id)}
+              <div style={{ display: "grid", gap: 16 }}>
+                {groupedByDate.map(([date, daySlots]) => (
+                  <div
+                    key={date}
+                    style={{
+                      ...cardStyle({
+                        padding: 20,
+                        boxShadow: "none",
+                        border: "1px solid #e2e8f0",
+                      }),
+                    }}
+                  >
+                    <div style={{ fontSize: 24, fontWeight: 800, marginBottom: 14 }}>
+                      {formatDate(date)}
+                    </div>
+                    <div
                       style={{
-                        textAlign: "left",
-                        borderRadius: 20,
-                        border: active
-                          ? "2px solid #0f172a"
-                          : "1px solid #cbd5e1",
-                        background: active
-                          ? "#0f172a"
-                          : disabled
-                          ? "#e2e8f0"
-                          : "#ffffff",
-                        color: active ? "#ffffff" : "#0f172a",
-                        padding: 18,
-                        cursor: disabled ? "not-allowed" : "pointer",
+                        display: "grid",
+                        gap: 14,
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                       }}
                     >
-                      <div style={{ fontSize: 22, fontWeight: 800 }}>
-                        {formatDate(slot.date)}
-                      </div>
-                      <div style={{ fontSize: 20, marginTop: 8 }}>
-                        {slot.start}~{slot.end}
-                      </div>
+                      {daySlots.map((slot) => {
+                        const active = selectedSlotIds.includes(slot.id);
+                        const disabled = slot.remaining <= 0 && !active;
+                        return (
+                          <button
+                            key={slot.id}
+                            onClick={() => !disabled && toggleSlot(slot.id)}
+                            style={{
+                              textAlign: "left",
+                              borderRadius: 20,
+                              border: active
+                                ? "2px solid #0f172a"
+                                : "1px solid #cbd5e1",
+                              background: active
+                                ? "#0f172a"
+                                : disabled
+                                ? "#e2e8f0"
+                                : "#ffffff",
+                              color: active ? "#ffffff" : "#0f172a",
+                              padding: 18,
+                              cursor: disabled ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            <div style={{ fontSize: 24, fontWeight: 800 }}>
+                              {slot.label}
+                            </div>
+                            <div style={{ fontSize: 19, marginTop: 8 }}>
+                              {slot.displayTime}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 18,
+                                marginTop: 10,
+                                opacity: active ? 0.9 : 1,
+                              }}
+                            >
+                              현재 {slot.bookedCount}/{SLOT_CAPACITY}명 · 잔여{" "}
+                              {slot.remaining}명
+                            </div>
+                            {disabled && (
+                              <div
+                                style={{
+                                  fontSize: 18,
+                                  marginTop: 8,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                이 시간은 마감되었습니다.
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {dateSelectionWarnings[date] && (
                       <div
                         style={{
-                          fontSize: 18,
-                          marginTop: 10,
-                          opacity: active ? 0.9 : 1,
+                          marginTop: 14,
+                          padding: 16,
+                          borderRadius: 18,
+                          border: "1px solid #fca5a5",
+                          background: "#fef2f2",
+                          color: "#b91c1c",
+                          whiteSpace: "pre-line",
                         }}
                       >
-                        현재 {slot.bookedCount}/{SLOT_CAPACITY}명 · 잔여{" "}
-                        {slot.remaining}명
-                      </div>
-                      {disabled && (
-                        <div
-                          style={{
-                            fontSize: 18,
-                            marginTop: 8,
-                            fontWeight: 700,
-                          }}
-                        >
-                          이 시간은 마감되었습니다.
+                        <div style={{ fontSize: 18, fontWeight: 800 }}>
+                          8시간 선택은 오전1 + 오후2만 가능합니다.
                         </div>
-                      )}
-                    </button>
-                  );
-                })}
+                        <div style={{ fontSize: 17, marginTop: 6 }}>
+                          (9시~13시 / 14시~18시)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1241,8 +1454,8 @@ export default function App() {
                         marginTop: 14,
                       }}
                     >
-                      {booking.slotIds?.map((id) => {
-                        const slot = slots.find((item) => item.id === id);
+                      {normalizeSlotIds(booking.slotIds).map((id) => {
+                        const slot = slotsById[id];
                         if (!slot) return null;
                         return (
                           <span
@@ -1254,7 +1467,7 @@ export default function App() {
                               fontSize: 17,
                             }}
                           >
-                            {formatDate(slot.date)} {slot.start}~{slot.end}
+                            {formatDate(slot.date)} {slot.label} ({slot.displayTime})
                           </span>
                         );
                       })}
@@ -1709,8 +1922,7 @@ export default function App() {
                           lineHeight: 1.6,
                         }}
                       >
-                        선택한 신청자의 예약 전체가 삭제되며, 연결된 시간대 인원수도
-                        함께 줄어듭니다.
+                        선택한 신청자의 예약 전체가 삭제되며, 연결된 시간대 정보도 함께 사라집니다.
                       </div>
                     </div>
 
@@ -1801,7 +2013,7 @@ export default function App() {
                           marginTop: 10,
                         }}
                       >
-                        전체 시간을 선택하면 아래 8개 신청 버튼이 생성됩니다.
+                        전체 시간을 선택하면 아래 4개의 4시간 슬롯이 생성됩니다.
                       </div>
                     </div>
                   </div>
@@ -1924,7 +2136,7 @@ export default function App() {
                         >
                           <div>
                             <div style={{ fontSize: 22, fontWeight: 800 }}>
-                              {slotText(slot)}
+                              {formatDate(slot.date)} {slot.label} ({slot.displayTime})
                             </div>
                             <div
                               style={{
@@ -1933,7 +2145,7 @@ export default function App() {
                                 marginTop: 6,
                               }}
                             >
-                              현재 {slot.bookedCount}/{SLOT_CAPACITY}명
+                              현재 {slot.bookedCount}/{SLOT_CAPACITY}명 · 잔여 {slot.remaining}명
                             </div>
                           </div>
                           <button
