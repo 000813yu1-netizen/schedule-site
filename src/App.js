@@ -705,9 +705,9 @@ export default function App() {
           }
         }
 
-        const allBookingsSnap = await transaction.get(
-          query(collection(db, "bookings"), orderBy("name"))
-        );
+       const allBookingsSnap = await transaction.get(
+  collection(db, "bookings")
+);
 
         const virtualBookings = allBookingsSnap.docs.map((item) => ({
           id: item.id,
