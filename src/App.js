@@ -396,34 +396,21 @@ function CalendarGrid({ slots }) {
                     >
                       {slot.memberNames.length > 0 ? (
                         <>
-                          {slot.memberNames.slice(0, 4).map((name) => (
-                            <span
-                              key={name}
-                              style={{
-                                fontSize: 14,
-                                padding: "5px 10px",
-                                borderRadius: 999,
-                                background: "#ffffff",
-                                border: "1px solid #cbd5e1",
-                              }}
-                            >
-                              {name}
-                            </span>
-                          ))}
-                          {slot.memberNames.length > 4 && (
-                            <span
-                              style={{
-                                fontSize: 14,
-                                padding: "5px 10px",
-                                borderRadius: 999,
-                                background: "#ffffff",
-                                border: "1px solid #cbd5e1",
-                              }}
-                            >
-                              +{slot.memberNames.length - 4}
-                            </span>
-                          )}
-                        </>
+  {slot.memberNames.map((name) => (
+    <span
+      key={name}
+      style={{
+        fontSize: 14,
+        padding: "5px 10px",
+        borderRadius: 999,
+        background: "#ffffff",
+        border: "1px solid #cbd5e1",
+      }}
+    >
+      {name}
+    </span>
+  ))}
+</>
                       ) : (
                         <span style={{ fontSize: 15, color: "#64748b" }}>
                           신청자 없음
