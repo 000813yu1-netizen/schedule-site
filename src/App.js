@@ -96,6 +96,7 @@ const DEFAULT_SETTINGS = {
     "변경 또는 취소를 원할 경우, 담당자에게 우선 연락해 주세요.",
   ownerPassword: "",
   lastNoticeText: "",
+  bookingStatus: "waiting",
 };
 
 function getSlotDefinition(slotOrKey) {
@@ -264,6 +265,10 @@ function isValidDateSelection(slotKeys) {
 
 function formatHoursLabel(hours) {
   return `${hours}시간`;
+}
+
+function getBookingStatusLabel(status) {
+  return status === "open" ? "신청중" : "대기중";
 }
 
 function CalendarGrid({ slots }) {
@@ -937,6 +942,11 @@ export default function App() {
     setNoticeText("");
   }
 
+  async function setBookingStatus(nextStatus) {
+    await saveSettings({ bookingStatus: nextStatus });
+    setSettings((prev) => ({ ...prev, bookingStatus: nextStatus }));
+  }
+
   async function handleAdminAccess() {
     setAdminError("");
     if (!settings.ownerPassword) {
@@ -955,6 +965,7 @@ export default function App() {
   }
 
   const selectedTotalHours = selectedSlotIds.length * HOURS_PER_SLOT;
+  const isBookingWaiting = (settings.bookingStatus || "waiting") === "waiting";
 
   return (
     <div
@@ -1140,100 +1151,136 @@ export default function App() {
               <h2 style={{ fontSize: 32, marginTop: 0 }}>
                 {editingId ? "내 일정 변경" : "새 일정 신청"}
               </h2>
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-                  이름
-                </div>
-                <input
-                  value={userName}
-                  onChange={(e) => setUserName(e.target.value)}
-                  placeholder="예: 홍길동"
-                  style={{
-                    width: "100%",
-                    height: 56,
-                    fontSize: 22,
-                    borderRadius: 16,
-                    border: "1px solid #cbd5e1",
-                    padding: "0 16px",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-                  연락처
-                </div>
-                <input
-                  value={userPhone}
-                  onChange={(e) => setUserPhone(e.target.value)}
-                  placeholder="예: 010-1234-5678"
-                  style={{
-                    width: "100%",
-                    height: 56,
-                    fontSize: 22,
-                    borderRadius: 16,
-                    border: "1px solid #cbd5e1",
-                    padding: "0 16px",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </div>
 
-              <div
-                style={{
-                  background: "#f8fafc",
-                  borderRadius: 20,
-                  padding: 18,
-                  fontSize: 20,
-                  lineHeight: 1.7,
-                }}
-              >
-                <div>
-                  <b>현재 선택 시간:</b> {formatHoursLabel(selectedTotalHours)}
-                </div>
-                <div>
-                  <b>신청 기준:</b> {MONTHLY_MIN_HOURS}시간 이상{" "}
-                  {MONTHLY_MAX_HOURS}시간 이하
-                </div>
-                <div style={{ marginTop: 8, fontWeight: 700 }}>
-                  {selectedTotalHours < MONTHLY_MIN_HOURS
-                    ? `${MONTHLY_MIN_HOURS - selectedTotalHours}시간 더 선택해야 합니다.`
-                    : selectedTotalHours > MONTHLY_MAX_HOURS
-                    ? `${selectedTotalHours - MONTHLY_MAX_HOURS}시간 초과되었습니다.`
-                    : "현재 시간은 허용 범위 안에 있습니다."}
-                </div>
-              </div>
-
-              {formError && (
+              {isBookingWaiting && (
                 <div
                   style={{
-                    marginTop: 14,
-                    background: "#fef2f2",
-                    color: "#b91c1c",
-                    border: "1px solid #fecaca",
-                    borderRadius: 18,
-                    padding: 16,
-                    fontSize: 18,
+                    minHeight: 220,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    background: "#f8fafc",
+                    borderRadius: 20,
+                    border: "2px dashed #cbd5e1",
+                    marginBottom: 18,
+                    padding: 24,
                   }}
                 >
-                  {formError}
+                  <div style={{ fontSize: 34, fontWeight: 800, color: "#334155" }}>
+                    지금은 예약 대기 중입니다.
+                  </div>
                 </div>
               )}
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  marginTop: 16,
-                  flexWrap: "wrap",
-                }}
-              >
-                <button onClick={saveBooking} style={buttonStyle(true)}>
-                  {editingId ? "변경 저장" : "신청 저장"}
-                </button>
-                <button onClick={resetForm} style={buttonStyle(false)}>
-                  초기화
-                </button>
+              <div style={{ opacity: isBookingWaiting ? 0.55 : 1 }}>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
+                    이름
+                  </div>
+                  <input
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    placeholder="예: 홍길동"
+                    disabled={isBookingWaiting}
+                    style={{
+                      width: "100%",
+                      height: 56,
+                      fontSize: 22,
+                      borderRadius: 16,
+                      border: "1px solid #cbd5e1",
+                      padding: "0 16px",
+                      boxSizing: "border-box",
+                      background: isBookingWaiting ? "#f8fafc" : "#ffffff",
+                    }}
+                  />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
+                    연락처
+                  </div>
+                  <input
+                    value={userPhone}
+                    onChange={(e) => setUserPhone(e.target.value)}
+                    placeholder="예: 010-1234-5678"
+                    disabled={isBookingWaiting}
+                    style={{
+                      width: "100%",
+                      height: 56,
+                      fontSize: 22,
+                      borderRadius: 16,
+                      border: "1px solid #cbd5e1",
+                      padding: "0 16px",
+                      boxSizing: "border-box",
+                      background: isBookingWaiting ? "#f8fafc" : "#ffffff",
+                    }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    borderRadius: 20,
+                    padding: 18,
+                    fontSize: 20,
+                    lineHeight: 1.7,
+                  }}
+                >
+                  <div>
+                    <b>현재 선택 시간:</b> {formatHoursLabel(selectedTotalHours)}
+                  </div>
+                  <div>
+                    <b>신청 기준:</b> {MONTHLY_MIN_HOURS}시간 이상{" "}
+                    {MONTHLY_MAX_HOURS}시간 이하
+                  </div>
+                  <div style={{ marginTop: 8, fontWeight: 700 }}>
+                    {selectedTotalHours < MONTHLY_MIN_HOURS
+                      ? `${MONTHLY_MIN_HOURS - selectedTotalHours}시간 더 선택해야 합니다.`
+                      : selectedTotalHours > MONTHLY_MAX_HOURS
+                      ? `${selectedTotalHours - MONTHLY_MAX_HOURS}시간 초과되었습니다.`
+                      : "현재 시간은 허용 범위 안에 있습니다."}
+                  </div>
+                </div>
+
+                {formError && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      background: "#fef2f2",
+                      color: "#b91c1c",
+                      border: "1px solid #fecaca",
+                      borderRadius: 18,
+                      padding: 16,
+                      fontSize: 18,
+                    }}
+                  >
+                    {formError}
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    marginTop: 16,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    onClick={saveBooking}
+                    style={{
+                      ...buttonStyle(true),
+                      opacity: isBookingWaiting ? 0.55 : 1,
+                      cursor: isBookingWaiting ? "not-allowed" : "pointer",
+                    }}
+                    disabled={isBookingWaiting}
+                  >
+                    {editingId ? "변경 저장" : "신청 저장"}
+                  </button>
+                  <button onClick={resetForm} style={buttonStyle(false)}>
+                    초기화
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1265,7 +1312,8 @@ export default function App() {
                     >
                       {daySlots.map((slot) => {
                         const active = selectedSlotIds.includes(slot.id);
-                        const disabled = slot.remaining <= 0 && !active;
+                        const disabled =
+                          isBookingWaiting || (slot.remaining <= 0 && !active);
                         return (
                           <button
                             key={slot.id}
@@ -1818,6 +1866,60 @@ export default function App() {
                           boxSizing: "border-box",
                         }}
                       />
+                    </div>
+                    <div
+                      style={{
+                        background: "#f8fafc",
+                        borderRadius: 20,
+                        padding: 18,
+                        border: "1px solid #e2e8f0",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 22,
+                          fontWeight: 800,
+                          marginBottom: 12,
+                        }}
+                      >
+                        예약 상태 관리
+                      </div>
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "8px 14px",
+                          borderRadius: 999,
+                          background:
+                            (settings.bookingStatus || "waiting") === "open"
+                              ? "#dcfce7"
+                              : "#fee2e2",
+                          color:
+                            (settings.bookingStatus || "waiting") === "open"
+                              ? "#166534"
+                              : "#b91c1c",
+                          fontSize: 17,
+                          fontWeight: 800,
+                          marginBottom: 14,
+                        }}
+                      >
+                        현재 상태: {getBookingStatusLabel(settings.bookingStatus || "waiting")}
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          style={buttonStyle(true)}
+                          onClick={() => setBookingStatus("open")}
+                        >
+                          예약 시작하기
+                        </button>
+                        <button
+                          style={buttonStyle(false)}
+                          onClick={() => setBookingStatus("waiting")}
+                        >
+                          대기하기
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <div
