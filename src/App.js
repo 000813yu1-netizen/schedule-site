@@ -28,7 +28,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const MONTHLY_MIN_HOURS = 21;
+const MONTHLY_MIN_HOURS = 4;
 const MONTHLY_MAX_HOURS = 57;
 const SLOT_CAPACITY = 7;
 const HOURS_PER_SLOT = 4;
