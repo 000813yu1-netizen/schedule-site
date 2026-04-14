@@ -94,6 +94,9 @@ const DEFAULT_SETTINGS = {
   hashtags: "월 최소 40시간  일일 최대 정원 7명",
   adminNoticeTemplate:
     "변경 또는 취소를 원할 경우, 담당자에게 우선 연락해 주세요.",
+  noticeTitle: "공지사항",
+  noticeText:
+    "※ 공지사항을 입력해 주세요.\n※ 운영설정에서 수정 가능합니다.",
   ownerPassword: "",
   lastNoticeText: "",
   bookingStatus: "waiting",
@@ -1033,17 +1036,34 @@ export default function App() {
               style={{
                 ...cardStyle({
                   marginTop: 18,
-                  background: "#f8fafc",
+                  background: "#f1f5f9",
                   boxShadow: "none",
-                  border: "2px solid #e2e8f0",
+                  border: "2px solid #cbd5e1",
+                  padding: 22,
                 }),
               }}
             >
-              <div style={{ fontSize: 26, fontWeight: 800 }}>
-                로그인 없이 일정 신청 가능
+              <div
+                style={{
+                  fontSize: 28,
+                  fontWeight: 800,
+                  lineHeight: 1.4,
+                  color: "#0f172a",
+                }}
+              >
+                {settings.noticeTitle || "공지사항"}
               </div>
-              <div style={{ fontSize: 18, color: "#475569", marginTop: 6 }}>
-                이 링크를 받은 사람은 바로 신청, 변경, 취소가 가능합니다.
+              <div
+                style={{
+                  fontSize: 21,
+                  lineHeight: 1.85,
+                  color: "#0f172a",
+                  marginTop: 10,
+                  whiteSpace: "pre-line",
+                  wordBreak: "keep-all",
+                }}
+              >
+                {settings.noticeText}
               </div>
             </div>
 
@@ -1837,6 +1857,80 @@ export default function App() {
                           resize: "vertical",
                         }}
                       />
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 20,
+                          fontWeight: 700,
+                          marginBottom: 8,
+                        }}
+                      >
+                        공지사항 제목
+                      </div>
+                      <input
+                        value={settings.noticeTitle}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            noticeTitle: e.target.value,
+                          }))
+                        }
+                        placeholder="예: 공지사항"
+                        style={{
+                          width: "100%",
+                          height: 56,
+                          fontSize: 22,
+                          borderRadius: 16,
+                          border: "1px solid #cbd5e1",
+                          padding: "0 16px",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 20,
+                          fontWeight: 700,
+                          marginBottom: 8,
+                        }}
+                      >
+                        공지사항 내용
+                      </div>
+                      <textarea
+                        value={settings.noticeText}
+                        onChange={(e) =>
+                          setSettings((prev) => ({
+                            ...prev,
+                            noticeText: e.target.value,
+                          }))
+                        }
+                        placeholder={"예: ※ 4월 일정은 3월 20일 오전 11시에 오픈됩니다.\n※ 변경 사항은 담당자에게 먼저 연락해 주세요."}
+                        style={{
+                          width: "100%",
+                          minHeight: 140,
+                          fontSize: 20,
+                          lineHeight: 1.7,
+                          borderRadius: 16,
+                          border: "1px solid #cbd5e1",
+                          padding: 16,
+                          boxSizing: "border-box",
+                          resize: "vertical",
+                        }}
+                      />
+                      <div
+                        style={{
+                          fontSize: 16,
+                          color: "#64748b",
+                          marginTop: 8,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        줄바꿈한 그대로 위쪽 공지사항 박스에 표시됩니다.
+                      </div>
                     </div>
                     <div>
                       <div
