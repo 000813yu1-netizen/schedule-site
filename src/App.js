@@ -29,7 +29,6 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 const MONTHLY_MIN_HOURS = 4;
-const MONTHLY_MAX_HOURS = 57;
 const SLOT_CAPACITY = 7;
 const HOURS_PER_SLOT = 4;
 
@@ -554,11 +553,18 @@ export default function App() {
         const totalHours = normalizeSlotIds(booking.slotIds).length * HOURS_PER_SLOT;
         let status = "적정";
         if (totalHours < MONTHLY_MIN_HOURS) status = "부족";
-        if (totalHours > MONTHLY_MAX_HOURS) status = "초과";
         return { ...booking, totalHours, status };
       })
       .sort((a, b) => a.name.localeCompare(b.name, "ko-KR"));
   }, [bookings]);
+
+  const hoursChartMax = useMemo(() => {
+    const maxHours = Math.max(
+      MONTHLY_MIN_HOURS,
+      ...bookingSummaries.map((person) => person.totalHours || 0)
+    );
+    return maxHours;
+  }, [bookingSummaries]);
 
   const groupedByDate = useMemo(() => {
     const map = {};
@@ -682,9 +688,9 @@ export default function App() {
       return setFormError("선택할 수 없는 8시간 조합이 포함되어 있습니다.");
     }
 
-    if (totalHours < MONTHLY_MIN_HOURS || totalHours > MONTHLY_MAX_HOURS) {
+    if (totalHours < MONTHLY_MIN_HOURS) {
       return setFormError(
-        `한 달에 ${MONTHLY_MIN_HOURS}시간 이상 ${MONTHLY_MAX_HOURS}시간 이하로 맞춰야 합니다.`
+        `${MONTHLY_MIN_HOURS}시간 이상 선택해야 합니다.`
       );
     }
 
@@ -1250,15 +1256,12 @@ export default function App() {
                     <b>현재 선택 시간:</b> {formatHoursLabel(selectedTotalHours)}
                   </div>
                   <div>
-                    <b>신청 기준:</b> {MONTHLY_MIN_HOURS}시간 이상{" "}
-                    {MONTHLY_MAX_HOURS}시간 이하
+                    <b>신청 기준:</b> {MONTHLY_MIN_HOURS}시간 이상
                   </div>
                   <div style={{ marginTop: 8, fontWeight: 700 }}>
                     {selectedTotalHours < MONTHLY_MIN_HOURS
                       ? `${MONTHLY_MIN_HOURS - selectedTotalHours}시간 더 선택해야 합니다.`
-                      : selectedTotalHours > MONTHLY_MAX_HOURS
-                      ? `${selectedTotalHours - MONTHLY_MAX_HOURS}시간 초과되었습니다.`
-                      : "현재 시간은 허용 범위 안에 있습니다."}
+                      : "신청 기준을 충족했습니다."}
                   </div>
                 </div>
 
@@ -1569,7 +1572,7 @@ export default function App() {
               <div style={{ display: "grid", gap: 14 }}>
                 {bookingSummaries.map((person) => {
                   const percent = Math.min(
-                    (person.totalHours / MONTHLY_MAX_HOURS) * 100,
+                    (person.totalHours / hoursChartMax) * 100,
                     100
                   );
                   return (
@@ -1621,8 +1624,7 @@ export default function App() {
                           marginTop: 10,
                         }}
                       >
-                        상태: {person.status} · 기준 {MONTHLY_MIN_HOURS}시간 ~{" "}
-                        {MONTHLY_MAX_HOURS}시간
+                        상태: {person.status} · 기준 {MONTHLY_MIN_HOURS}시간 이상
                       </div>
                     </div>
                   );
@@ -2212,7 +2214,7 @@ export default function App() {
                   <div style={{ display: "grid", gap: 14, marginBottom: 20 }}>
                     {bookingSummaries.map((person) => {
                       const percent = Math.min(
-                        (person.totalHours / MONTHLY_MAX_HOURS) * 100,
+                        (person.totalHours / hoursChartMax) * 100,
                         100
                       );
                       return (
@@ -2288,8 +2290,7 @@ export default function App() {
                               marginTop: 8,
                             }}
                           >
-                            월 기준 {MONTHLY_MIN_HOURS}시간 ~{" "}
-                            {MONTHLY_MAX_HOURS}시간
+                            최소 기준 {MONTHLY_MIN_HOURS}시간 이상
                           </div>
                         </div>
                       );
