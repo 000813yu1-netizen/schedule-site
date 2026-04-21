@@ -459,6 +459,7 @@ export default function App() {
   const [selectedDeleteBookingId, setSelectedDeleteBookingId] = useState("");
   const [deleteBookingError, setDeleteBookingError] = useState("");
   const manageTopRef = useRef(null);
+  const bookingRefs = useRef({});
 
   useEffect(() => {
     const unsubSettings = onSnapshot(doc(db, "settings", "app"), (snapshot) => {
@@ -703,6 +704,7 @@ export default function App() {
         ...item.data(),
       }));
 
+      let newBookingId = null;
       await runTransaction(db, async (transaction) => {
         const bookingRef = editingId
           ? doc(db, "bookings", editingId)
@@ -718,6 +720,7 @@ export default function App() {
        // 🔥 transaction 밖에서 미리 가져온 bookings 사용
         const virtualBookings = preFetchedBookings;
 
+        newBookingId = bookingRef.id;
         const nextPayload = {
           id: bookingRef.id,
           name: trimmedName,
@@ -781,7 +784,13 @@ export default function App() {
       await saveSettings({ lastNoticeText: nextNotice });
 
       resetForm();
-      setTab("notice");
+      setTab("manage");
+      setTimeout(() => {
+        bookingRefs.current[newBookingId]?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 200);
     } catch (error) {
       if (error?.message === "TIME_OVER_CAPACITY") {
         setFormError("겹치는 시간대 인원이 7명을 초과해 저장할 수 없습니다.");
@@ -1453,6 +1462,7 @@ export default function App() {
               <div style={{ display: "grid", gap: 14 }}>
                 {bookingSummaries.map((booking) => (
                   <div
+                    ref={(el) => (bookingRefs.current[booking.id] = el)}
                     key={booking.id}
                     style={{
                       ...cardStyle({
