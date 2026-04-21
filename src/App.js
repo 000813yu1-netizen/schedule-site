@@ -719,11 +719,10 @@ export default function App() {
         const virtualBookings = preFetchedBookings;
 
         const nextPayload = {
-          memo: userMemo,
           id: bookingRef.id,
           name: trimmedName,
           phone: trimmedPhone,
-            memo: userMemo,
+          memo: userMemo,
           slotIds: nextSelectedSlotIds,
           updatedAt: nowStamp(),
         };
@@ -1466,8 +1465,19 @@ export default function App() {
                     >
                       <div>
                         <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {booking.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{booking.memo}</span>)}{booking.name}
+                          {booking.name}
                         </div>
+                        {booking.memo ? (
+                          <div
+                            style={{
+                              fontSize: 16,
+                              color: "#94a3b8",
+                              marginTop: 4,
+                            }}
+                          >
+                            {booking.memo}
+                          </div>
+                        ) : null}
                         <div
                           style={{
                             fontSize: 18,
@@ -1494,17 +1504,14 @@ export default function App() {
                             marginTop: 10,
                           }}
                         >
-                          <span
+                          <div
                             style={{
-                              background: "#e2e8f0",
-                              borderRadius: 999,
-                              padding: "8px 14px",
-                              fontSize: 17,
+                              fontSize: 18,
                               fontWeight: 700,
                             }}
                           >
                             월 누적 {booking.totalHours}시간
-                          </span>
+                          </div>
                           <span
                             style={{
                               background: "#f1f5f9",
@@ -1621,8 +1628,21 @@ export default function App() {
                           gap: 12,
                         }}
                       >
-                        <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {person.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{person.memo}</span>)}{person.name}
+                        <div>
+                          <div style={{ fontSize: 24, fontWeight: 800 }}>
+                            {person.name}
+                          </div>
+                          {person.memo ? (
+                            <div
+                              style={{
+                                fontSize: 16,
+                                color: "#94a3b8",
+                                marginTop: 4,
+                              }}
+                            >
+                              {person.memo}
+                            </div>
+                          ) : null}
                         </div>
                         <div style={{ fontSize: 20, fontWeight: 700 }}>
                           {person.totalHours}시간
@@ -2266,8 +2286,21 @@ export default function App() {
                             }}
                           >
                             <div>
-                              <div style={{ fontSize: 22, fontWeight: 800 }}>
-                                {person.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{person.memo}</span>)}{person.name}
+                              <div>
+                                <div style={{ fontSize: 22, fontWeight: 800 }}>
+                                  {person.name}
+                                </div>
+                                {person.memo ? (
+                                  <div
+                                    style={{
+                                      fontSize: 16,
+                                      color: "#94a3b8",
+                                      marginTop: 4,
+                                    }}
+                                  >
+                                    {person.memo}
+                                  </div>
+                                ) : null}
                               </div>
                               <div
                                 style={{
