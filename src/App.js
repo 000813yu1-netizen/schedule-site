@@ -592,6 +592,7 @@ export default function App() {
   function resetForm() {
     setUserName("");
     setUserPhone("");
+    setUserMemo("");
     setSelectedSlotIds([]);
     setEditingId(null);
     setFormError("");
@@ -1131,7 +1132,7 @@ export default function App() {
                       }),
                     }}
                   >
-                    <div style={{ fontSize: 24, fontWeight: 800 }}>
+                    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:24,fontWeight:800 }}>
                       {formatDate(date)}
                     </div>
                     <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
@@ -1384,7 +1385,7 @@ export default function App() {
                               cursor: disabled ? "not-allowed" : "pointer",
                             }}
                           >
-                            <div style={{ fontSize: 24, fontWeight: 800 }}>
+                            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:24,fontWeight:800 }}>
                               {slot.label}
                             </div>
                             <div style={{ fontSize: 19, marginTop: 8 }}>
@@ -1464,8 +1465,13 @@ export default function App() {
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {booking.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{booking.memo}</span>)}{booking.name}
+                        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:24,fontWeight:800 }}>
+                          {booking.name}
+                        {booking.memo && (
+                            <span style={{fontSize:16,color:"#64748b"}}>
+                              {booking.memo}
+                            </span>
+                          )}
                         </div>
                         <div
                           style={{
@@ -1475,6 +1481,11 @@ export default function App() {
                           }}
                         >
                           연락처: {booking.phone || "-"}
+                        {booking.memo && (
+                            <span style={{fontSize:16,color:"#64748b"}}>
+                              {booking.memo}
+                            </span>
+                          )}
                         </div>
                         <div
                           style={{
@@ -1620,8 +1631,13 @@ export default function App() {
                           gap: 12,
                         }}
                       >
-                        <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {person.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{person.memo}</span>)}{person.name}
+                        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:24,fontWeight:800 }}>
+                          {person.name}
+                          {person.memo && (
+                            <span style={{fontSize:16,color:"#64748b"}}>
+                              {person.memo}
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: 20, fontWeight: 700 }}>
                           {person.totalHours}시간
@@ -2097,7 +2113,7 @@ export default function App() {
                         <option value="">삭제할 신청자를 선택해 주세요</option>
                         {bookingSummaries.map((booking) => (
                           <option key={booking.id} value={booking.id}>
-                            {booking.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{booking.memo}</span>)}{booking.name} · {booking.phone || "연락처 없음"} ·{" "}
+                            {booking.name} · {booking.phone || "연락처 없음"} ·{" "}
                             {booking.totalHours}시간
                           </option>
                         ))}
@@ -2266,7 +2282,7 @@ export default function App() {
                           >
                             <div>
                               <div style={{ fontSize: 22, fontWeight: 800 }}>
-                                {person.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{person.memo}</span>)}{person.name}
+                                {person.name}
                               </div>
                               <div
                                 style={{
@@ -2279,7 +2295,7 @@ export default function App() {
                               </div>
                             </div>
                             <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 24, fontWeight: 800 }}>
+                              <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:24,fontWeight:800 }}>
                                 {person.totalHours}시간
                               </div>
                               <div
