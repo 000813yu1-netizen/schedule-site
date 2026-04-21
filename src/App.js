@@ -1466,7 +1466,7 @@ export default function App() {
                     >
                       <div>
                         <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {}{booking.name}{booking.memo ? ` (${booking.memo})` : ""}
+                          {booking.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{booking.memo}</span>)}{booking.name}
                         </div>
                         <div
                           style={{
@@ -1622,7 +1622,7 @@ export default function App() {
                         }}
                       >
                         <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {}{person.name}{person.memo ? ` (${person.memo})` : ""}
+                          {person.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{person.memo}</span>)}{person.name}
                         </div>
                         <div style={{ fontSize: 20, fontWeight: 700 }}>
                           {person.totalHours}시간
@@ -2098,7 +2098,7 @@ export default function App() {
                         <option value="">삭제할 신청자를 선택해 주세요</option>
                         {bookingSummaries.map((booking) => (
                           <option key={booking.id} value={booking.id}>
-                            {}{booking.name}{booking.memo ? ` (${booking.memo})` : ""} · {booking.phone || "연락처 없음"} ·{" "}
+                            {booking.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{booking.memo}</span>)}{booking.name} · {booking.phone || "연락처 없음"} ·{" "}
                             {booking.totalHours}시간
                           </option>
                         ))}
@@ -2267,7 +2267,7 @@ export default function App() {
                           >
                             <div>
                               <div style={{ fontSize: 22, fontWeight: 800 }}>
-                                {}{person.name}{person.memo ? ` (${person.memo})` : ""}
+                                {person.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{person.memo}</span>)}{person.name}
                               </div>
                               <div
                                 style={{
