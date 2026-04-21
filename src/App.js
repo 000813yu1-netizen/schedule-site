@@ -719,11 +719,10 @@ export default function App() {
         const virtualBookings = preFetchedBookings;
 
         const nextPayload = {
-          memo: userMemo,
           id: bookingRef.id,
           name: trimmedName,
           phone: trimmedPhone,
-            memo: userMemo,
+          memo: userMemo,
           slotIds: nextSelectedSlotIds,
           updatedAt: nowStamp(),
         };
@@ -845,7 +844,13 @@ export default function App() {
       await deleteBookingWithCounts(bookingId);
 
       if (editingId === bookingId) resetForm();
-      setTab("notice");
+      setTab("manage");
+      setTimeout(() => {
+        manageTopRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 80);
     } catch (error) {
       setFormError("취소 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     }
@@ -1266,6 +1271,7 @@ export default function App() {
                       border: "1px solid #cbd5e1",
                       padding: 12,
                       boxSizing: "border-box",
+                      resize: "vertical",
                       background: isBookingWaiting ? "#f8fafc" : "#ffffff",
                     }}
                   />
@@ -1466,13 +1472,20 @@ export default function App() {
                     >
                       <div>
                         <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {booking.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{booking.memo}</span>)}{booking.name}
-                        {booking.memo && (
-                          <div style={{ fontSize:16, color:"#94a3b8", marginTop:4, whiteSpace:"pre-line" }}>
+                          {booking.name}
+                        </div>
+                        {booking.memo ? (
+                          <div
+                            style={{
+                              fontSize: 16,
+                              color: "#94a3b8",
+                              marginTop: 4,
+                              whiteSpace: "pre-line",
+                            }}
+                          >
                             {booking.memo}
                           </div>
-                        )}
-                        </div>
+                        ) : null}
                         <div
                           style={{
                             fontSize: 18,
@@ -1493,23 +1506,21 @@ export default function App() {
                         </div>
                         <div
                           style={{
+                            fontSize: 18,
+                            fontWeight: 700,
+                            marginTop: 10,
+                          }}
+                        >
+                          월 누적 {booking.totalHours}시간
+                        </div>
+                        <div
+                          style={{
                             display: "flex",
                             gap: 8,
                             flexWrap: "wrap",
                             marginTop: 10,
                           }}
                         >
-                          <span
-                            style={{
-                              background: "#e2e8f0",
-                              borderRadius: 999,
-                              padding: "8px 14px",
-                              fontSize: 17,
-                              fontWeight: 700,
-                            }}
-                          >
-                            월 누적 {booking.totalHours}시간
-                          </span>
                           <span
                             style={{
                               background: "#f1f5f9",
@@ -1619,22 +1630,23 @@ export default function App() {
                         }),
                       }}
                     >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                        }}
-                      >
+                      <div>
                         <div style={{ fontSize: 24, fontWeight: 800 }}>
-                          {person.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{person.memo}</span>)}{person.name}
-                          {person.memo && (
-                            <div style={{ fontSize:16, color:"#94a3b8", marginTop:4, whiteSpace:"pre-line" }}>
-                              {person.memo}
-                            </div>
-                          )}
+                          {person.name}
                         </div>
-                        <div style={{ fontSize: 20, fontWeight: 700 }}>
+                        {person.memo ? (
+                          <div
+                            style={{
+                              fontSize: 16,
+                              color: "#94a3b8",
+                              marginTop: 4,
+                              whiteSpace: "pre-line",
+                            }}
+                          >
+                            {person.memo}
+                          </div>
+                        ) : null}
+                        <div style={{ fontSize: 20, fontWeight: 700, marginTop: 8 }}>
                           {person.totalHours}시간
                         </div>
                       </div>
@@ -2108,12 +2120,7 @@ export default function App() {
                         <option value="">삭제할 신청자를 선택해 주세요</option>
                         {bookingSummaries.map((booking) => (
                           <option key={booking.id} value={booking.id}>
-                            {booking.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{booking.memo}</span>)}{booking.name}
-                        {booking.memo && (
-                          <div style={{ fontSize:16, color:"#94a3b8", marginTop:4, whiteSpace:"pre-line" }}>
-                            {booking.memo}
-                          </div>
-                        )} · {booking.phone || "연락처 없음"} ·{" "}
+                            {booking.name} · {booking.phone || "연락처 없음"} ·{" "}
                             {booking.totalHours}시간
                           </option>
                         ))}
@@ -2282,13 +2289,20 @@ export default function App() {
                           >
                             <div>
                               <div style={{ fontSize: 22, fontWeight: 800 }}>
-                                {person.memo && (<span style={{fontSize:16,color:"#64748b",marginRight:6}}>{person.memo}</span>)}{person.name}
-                          {person.memo && (
-                            <div style={{ fontSize:16, color:"#94a3b8", marginTop:4, whiteSpace:"pre-line" }}>
-                              {person.memo}
-                            </div>
-                          )}
+                                {person.name}
                               </div>
+                              {person.memo ? (
+                                <div
+                                  style={{
+                                    fontSize: 16,
+                                    color: "#94a3b8",
+                                    marginTop: 4,
+                                    whiteSpace: "pre-line",
+                                  }}
+                                >
+                                  {person.memo}
+                                </div>
+                              ) : null}
                               <div
                                 style={{
                                   fontSize: 17,
