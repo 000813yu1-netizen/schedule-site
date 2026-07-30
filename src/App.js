@@ -99,6 +99,10 @@ const DEFAULT_SETTINGS = {
   ownerPassword: "",
   lastNoticeText: "",
   bookingStatus: "waiting",
+  autoOpenEnabled: false,
+  autoOpenDate: "",
+  autoOpenTime: "",
+  autoOpenedAt: "",
 };
 
 function getSlotDefinition(slotOrKey) {
@@ -460,6 +464,7 @@ export default function App() {
   const [deleteBookingError, setDeleteBookingError] = useState("");
   const manageTopRef = useRef(null);
   const bookingRefs = useRef({});
+  const autoOpenRunningRef = useRef(false);
 
   useEffect(() => {
     const unsubSettings = onSnapshot(doc(db, "settings", "app"), (snapshot) => {
@@ -971,10 +976,68 @@ export default function App() {
     setNoticeText("");
   }
 
-  async function setBookingStatus(nextStatus) {
-    await saveSettings({ bookingStatus: nextStatus });
-    setSettings((prev) => ({ ...prev, bookingStatus: nextStatus }));
+  async function setBookingStatus(nextStatus, isAutoOpen = false) {
+    const nextSettings = { bookingStatus: nextStatus };
+
+    if (nextStatus === "open") {
+      nextSettings.autoOpenEnabled = false;
+      if (isAutoOpen) nextSettings.autoOpenedAt = nowStamp();
+    }
+
+    await saveSettings(nextSettings);
+    setSettings((prev) => ({ ...prev, ...nextSettings }));
   }
+
+  useEffect(() => {
+    if (
+      tab !== "admin" ||
+      !isAdminUnlocked ||
+      !settings.autoOpenEnabled ||
+      (settings.bookingStatus || "waiting") !== "waiting" ||
+      !settings.autoOpenDate ||
+      !settings.autoOpenTime
+    ) {
+      return undefined;
+    }
+
+    async function checkAutoOpen() {
+      if (autoOpenRunningRef.current) return;
+
+      const scheduledTime = new Date(
+        `${settings.autoOpenDate}T${settings.autoOpenTime}:00`
+      ).getTime();
+
+      if (Number.isNaN(scheduledTime) || Date.now() < scheduledTime) return;
+
+      autoOpenRunningRef.current = true;
+      try {
+        await setBookingStatus("open", true);
+      } finally {
+        autoOpenRunningRef.current = false;
+      }
+    }
+
+    checkAutoOpen();
+    const intervalId = window.setInterval(checkAutoOpen, 1000);
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") checkAutoOpen();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [
+    tab,
+    isAdminUnlocked,
+    settings.autoOpenEnabled,
+    settings.autoOpenDate,
+    settings.autoOpenTime,
+    settings.bookingStatus,
+  ]);
 
   async function handleAdminAccess() {
     setAdminError("");
@@ -2075,6 +2138,105 @@ export default function App() {
                         >
                           대기하기
                         </button>
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 18,
+                          paddingTop: 18,
+                          borderTop: "1px solid #e2e8f0",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: 22,
+                            fontWeight: 800,
+                            marginBottom: 12,
+                          }}
+                        >
+                          자동 예약 시작
+                        </div>
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            fontSize: 19,
+                            fontWeight: 700,
+                            marginBottom: 14,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={Boolean(settings.autoOpenEnabled)}
+                            onChange={(e) =>
+                              setSettings((prev) => ({
+                                ...prev,
+                                autoOpenEnabled: e.target.checked,
+                              }))
+                            }
+                            style={{ width: 22, height: 22 }}
+                          />
+                          자동 예약 시작 사용
+                        </label>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr 1fr",
+                            gap: 10,
+                          }}
+                        >
+                          <input
+                            type="date"
+                            value={settings.autoOpenDate || ""}
+                            onChange={(e) =>
+                              setSettings((prev) => ({
+                                ...prev,
+                                autoOpenDate: e.target.value,
+                              }))
+                            }
+                            style={{
+                              width: "100%",
+                              height: 56,
+                              fontSize: 20,
+                              borderRadius: 16,
+                              border: "1px solid #cbd5e1",
+                              padding: "0 16px",
+                              boxSizing: "border-box",
+                              background: "#ffffff",
+                            }}
+                          />
+                          <input
+                            type="time"
+                            value={settings.autoOpenTime || ""}
+                            onChange={(e) =>
+                              setSettings((prev) => ({
+                                ...prev,
+                                autoOpenTime: e.target.value,
+                              }))
+                            }
+                            style={{
+                              width: "100%",
+                              height: 56,
+                              fontSize: 20,
+                              borderRadius: 16,
+                              border: "1px solid #cbd5e1",
+                              padding: "0 16px",
+                              boxSizing: "border-box",
+                              background: "#ffffff",
+                            }}
+                          />
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 16,
+                            color: "#64748b",
+                            marginTop: 10,
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          운영 설정을 저장한 뒤, 예약 시작 시각까지 관리자 페이지를 열고 잠금 해제 상태로 유지해 주세요.
+                        </div>
                       </div>
                     </div>
                     <div>
